@@ -137,7 +137,23 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 .empty{text-align:center;padding:30px;color:var(--text-dim);font-family:'Share Tech Mono',monospace;font-size:12px;letter-spacing:1px;line-height:1.8}
 
 /* === BOTTOM NAV === */
-.bottom-nav{position:fixed;bottom:0;left:0;right:0;background:#111;border-top:1px solid var(--red-dim);display:grid;grid-template-columns:repeat(4,1fr);padding:6px 0 var(--safe-bottom);z-index:100}
+.bottom-nav{position:fixed;bottom:0;left:0;right:0;background:#111;border-top:1px solid var(--red-dim);display:grid;grid-template-columns:repeat(5,1fr);padding:6px 0 var(--safe-bottom);z-index:100}
+
+/* === EMAIL SUGGESTIONS === */
+.email-card{background:var(--bg-card);border:1px solid var(--border);border-left:3px solid var(--medium);border-radius:2px;margin-bottom:6px;overflow:hidden;transition:all .3s}
+.email-card.approved{border-left-color:var(--low);opacity:0;transform:translateX(100px);max-height:0;margin:0;padding:0;border:0}
+.email-card.dismissed{border-left-color:var(--completed);opacity:0;transform:translateX(-100px);max-height:0;margin:0;padding:0;border:0}
+.email-inner{padding:12px 14px}
+.email-from{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--red);letter-spacing:1px;margin-bottom:4px}
+.email-subject{font-size:14px;color:var(--text-bright);font-weight:600;line-height:1.3;margin-bottom:4px}
+.email-suggestion{font-size:12px;color:var(--medium);margin-top:6px;padding-top:6px;border-top:1px solid var(--border)}
+.email-suggestion span{font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--text-dim)}
+.email-btns{display:flex;gap:8px;padding:0 14px 10px}
+.email-btn{font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:1px;padding:6px 14px;border:1px solid var(--border);border-radius:2px;background:var(--bg);cursor:pointer;min-height:32px;transition:all .15s}
+.email-btn:active{transform:scale(.95)}
+.email-btn.approve{border-color:var(--low);color:var(--low)}
+.email-btn.dismiss{border-color:var(--text-dim);color:var(--text-dim)}
+.email-count{font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-dim);letter-spacing:1px;padding:8px 0}
 .nav-item{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px;color:var(--text-dim);cursor:pointer;font-size:9px;font-family:'Share Tech Mono',monospace;letter-spacing:1px;text-transform:uppercase;min-height:44px;justify-content:center;transition:color .2s}
 .nav-item.active{color:var(--red-bright)}
 .nav-icon{font-size:18px}
@@ -193,6 +209,11 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
   <div class="content" id="journalContent"></div>
 </div>
 
+<!-- EMAIL VIEW -->
+<div class="view" id="viewEmail">
+  <div class="content" id="emailContent"><div class="loading">LOADING EMAILS</div></div>
+</div>
+
 <!-- ALL VIEW -->
 <div class="view" id="viewAll">
   <div class="search-bar"><input class="search-input" id="searchInput" placeholder="SEARCH TASKS..." oninput="filterAllTasks()"></div>
@@ -230,6 +251,7 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 <div class="bottom-nav">
   <div class="nav-item active" onclick="switchView('Tasks',this)"><span class="nav-icon">&#9673;</span>TODAY</div>
   <div class="nav-item" onclick="switchView('Calendar',this)"><span class="nav-icon">&#9638;</span>WEEK</div>
+  <div class="nav-item" onclick="switchView('Email',this)"><span class="nav-icon">&#9993;</span>EMAIL</div>
   <div class="nav-item" onclick="switchView('Journal',this)"><span class="nav-icon">&#9830;</span>JOURNAL</div>
   <div class="nav-item" onclick="switchView('All',this)"><span class="nav-icon">&#9776;</span>ALL</div>
 </div>
@@ -317,6 +339,7 @@ function switchView(name,el){
   if(el)el.classList.add('active');
   if(name==='All')loadAllTasks();
   if(name==='Calendar')loadWeekView();
+  if(name==='Email')loadEmailSuggestions();
 }
 
 function filterBiz(biz,el){
@@ -567,6 +590,53 @@ function renderJournal(now){
     </div>
     <div class="section-header">REFLECTION</div>
     <div class="journal-prompt">What does this mean for your day today?<br>How can you apply this to your current challenges?</div>`;
+}
+
+// === EMAIL SUGGESTIONS ===
+async function loadEmailSuggestions(){
+  const container=document.getElementById('emailContent');
+  const suggestions=await q('email_suggestions','status=eq.pending&order=created_at.desc');
+  if(!suggestions.length){
+    container.innerHTML='<div class="empty">NO EMAIL SUGGESTIONS<br>Run the morning briefing to scan your inbox</div>';
+    return;
+  }
+  let html=`<div class="email-count">${suggestions.length} ACTIONABLE EMAILS FOUND</div>`;
+  suggestions.forEach(s=>{
+    const date=s.received_at?new Date(s.received_at).toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZone:'America/Chicago'}):'';
+    html+=`<div class="email-card" id="email-${s.id}">
+      <div class="email-inner">
+        <div class="email-from">${s.from_address} ${date?'// '+date:''}</div>
+        <div class="email-subject">${s.subject}</div>
+        <div class="email-suggestion">
+          <span>SUGGESTED TASK:</span> ${s.suggested_title}
+          <span style="margin-left:8px">[${s.suggested_priority}]</span>
+          <span style="margin-left:8px">${s.suggested_business}</span>
+        </div>
+      </div>
+      <div class="email-btns">
+        <button class="email-btn approve" onclick="approveEmail(${s.id},'${s.suggested_title.replace(/'/g,"\\'")}','${s.suggested_business}','${s.suggested_priority}','${s.message_id}','${s.subject.replace(/'/g,"\\'")}')">ADD TASK</button>
+        <button class="email-btn dismiss" onclick="dismissEmail(${s.id})">DISMISS</button>
+      </div>
+    </div>`;
+  });
+  container.innerHTML=html;
+}
+
+async function approveEmail(id,title,business,priority,messageId,subject){
+  const card=document.getElementById('email-'+id);
+  card.classList.add('approved');
+  // Create the task
+  await insert('tasks',{title:title,business:business,priority:priority,notes:'Email ref: '+subject+' (ID: '+messageId+')',due_date:todayStr()});
+  // Mark suggestion as approved
+  await patch('email_suggestions','id=eq.'+id,{status:'approved'});
+  setTimeout(()=>loadEmailSuggestions(),400);
+}
+
+async function dismissEmail(id){
+  const card=document.getElementById('email-'+id);
+  card.classList.add('dismissed');
+  await patch('email_suggestions','id=eq.'+id,{status:'dismissed'});
+  setTimeout(()=>loadEmailSuggestions(),400);
 }
 
 // === EVENT EDIT/DELETE ===
