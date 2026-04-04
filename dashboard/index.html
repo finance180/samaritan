@@ -337,6 +337,7 @@ function switchView(name,el){
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('view'+name).classList.add('active');
   if(el)el.classList.add('active');
+  if(name==='Tasks')loadDashboard();
   if(name==='All')loadAllTasks();
   if(name==='Calendar')loadWeekView();
   if(name==='Email')loadEmailSuggestions();
