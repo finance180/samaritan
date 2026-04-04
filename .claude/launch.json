@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "samaritan-dashboard",
+      "runtimeExecutable": "/usr/bin/ruby",
+      "runtimeArgs": ["-e", "require 'webrick'; WEBrick::HTTPServer.new(Port: 8080, DocumentRoot: '/Users/brianthompson/Documents/01 Projects/Claude Projects/Samaritan/dashboard').start"],
+      "port": 8080
+    }
+  ]
+}

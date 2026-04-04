@@ -59,12 +59,28 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 .section-header.overdue-header{color:var(--high);border-bottom-color:var(--high)}
 
 /* === EVENT CARDS === */
-.event-card{background:var(--bg-card);border:1px solid var(--border);border-left:3px solid var(--red);border-radius:2px;padding:10px 14px;margin-bottom:4px;display:flex;align-items:center;gap:12px;min-height:44px}
+.event-card{background:var(--bg-card);border:1px solid var(--border);border-left:3px solid var(--red);border-radius:2px;margin-bottom:4px;cursor:pointer;overflow:hidden;transition:all .3s}
 .event-card.now{border-left-color:var(--red-bright);background:linear-gradient(90deg,rgba(196,30,30,0.08) 0%,var(--bg-card) 100%)}
 .event-card.now .event-time{color:var(--red-bright);font-weight:700}
+.event-card.deleting{opacity:0;max-height:0;margin:0;padding:0;border:0}
+.event-inner{padding:10px 14px;display:flex;align-items:center;gap:12px;min-height:44px}
 .event-time{font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--red);min-width:60px}
 .event-title{font-size:14px;color:var(--text);flex:1}
 .event-label{font-family:'Share Tech Mono',monospace;font-size:8px;color:var(--red-bright);letter-spacing:1px;background:var(--red-dim);padding:1px 5px;border-radius:2px}
+.event-actions{display:none;padding:0 14px 10px;gap:8px}
+.event-actions.show{display:flex}
+
+/* === EVENT EDIT MODAL === */
+.edit-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:200;padding:20px;padding-top:calc(80px + var(--safe-top));flex-direction:column;gap:12px}
+.edit-modal.show{display:flex}
+.edit-modal label{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);letter-spacing:1px;text-transform:uppercase;margin-bottom:-8px}
+.edit-modal input{width:100%;background:var(--bg-card);border:1px solid var(--red-dim);border-radius:4px;padding:12px;color:var(--text-bright);font-size:15px;font-family:'Rajdhani',sans-serif;outline:none;min-height:44px}
+.edit-modal input::placeholder{color:var(--text-dim)}
+.edit-modal-btns{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}
+.edit-modal-btns button{font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:1px;padding:10px 18px;border-radius:2px;cursor:pointer;min-height:44px;border:1px solid var(--border)}
+.edit-modal-btns .cancel{background:var(--bg);color:var(--text-dim)}
+.edit-modal-btns .save{background:var(--red);color:#fff;border-color:var(--red)}
+.edit-modal-btns .delete{background:var(--bg);color:var(--high);border-color:var(--high)}
 
 /* === TASK CARDS === */
 .task-card{background:var(--bg-card);border:1px solid var(--border);border-left:3px solid var(--medium);border-radius:2px;margin-bottom:6px;position:relative;overflow:hidden;transition:all .3s}
@@ -190,6 +206,23 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
   <div class="add-modal-btns">
     <button class="cancel" onclick="hideAddModal()">CANCEL</button>
     <button class="submit" onclick="quickAdd()">ADD TASK</button>
+  </div>
+</div>
+
+<!-- EVENT EDIT MODAL -->
+<div class="edit-modal" id="editModal">
+  <label>EVENT NAME</label>
+  <input id="editSummary" placeholder="Event name">
+  <label>DATE</label>
+  <input id="editDate" type="date">
+  <label>START TIME</label>
+  <input id="editStart" type="time">
+  <label>END TIME</label>
+  <input id="editEnd" type="time">
+  <div class="edit-modal-btns">
+    <button class="delete" onclick="deleteEvent()">DELETE</button>
+    <button class="cancel" onclick="hideEditModal()">CANCEL</button>
+    <button class="save" onclick="saveEvent()">SAVE</button>
   </div>
 </div>
 
@@ -392,10 +425,12 @@ function renderTodayView(){
         const hr=parseInt(h);
         timeStr=(hr>12?hr-12:hr||12)+':'+m+(hr>=12?' PM':' AM');
       }
-      html+=`<div class="event-card${isNow?' now':''}">
-        <div class="event-time">${timeStr}</div>
-        <div class="event-title">${ev.summary}</div>
-        ${isNow?'<div class="event-label">NOW</div>':''}
+      html+=`<div class="event-card${isNow?' now':''}" onclick="openEditModal(${ev.id},'${ev.event_date}','${ev.start_time||''}','${ev.end_time||''}','${ev.summary.replace(/'/g,"\\'")}')">
+        <div class="event-inner">
+          <div class="event-time">${timeStr}</div>
+          <div class="event-title">${ev.summary}</div>
+          ${isNow?'<div class="event-label">NOW</div>':''}
+        </div>
       </div>`;
     });
   }
@@ -484,7 +519,7 @@ async function loadWeekView(){
     dayEvents.forEach(ev=>{
       let timeStr=ev.all_day?'All day':ev.start_time||'';
       if(timeStr&&!ev.all_day){const[h,m]=timeStr.split(':');const hr=parseInt(h);timeStr=(hr>12?hr-12:hr||12)+':'+m+(hr>=12?' PM':' AM')}
-      html+=`<div class="event-card"><div class="event-time">${timeStr}</div><div class="event-title">${ev.summary}</div></div>`;
+      html+=`<div class="event-card" onclick="openEditModal(${ev.id},'${ev.event_date}','${ev.start_time||''}','${ev.end_time||''}','${ev.summary.replace(/'/g,"\\'")}')"><div class="event-inner"><div class="event-time">${timeStr}</div><div class="event-title">${ev.summary}</div></div></div>`;
     });
 
     dayTasks.forEach(tk=>{html+=taskCard(tk)});
@@ -532,6 +567,48 @@ function renderJournal(now){
     </div>
     <div class="section-header">REFLECTION</div>
     <div class="journal-prompt">What does this mean for your day today?<br>How can you apply this to your current challenges?</div>`;
+}
+
+// === EVENT EDIT/DELETE ===
+let editingEventId=null;
+
+function openEditModal(id,date,start,end,summary){
+  editingEventId=id;
+  document.getElementById('editSummary').value=summary;
+  document.getElementById('editDate').value=date;
+  document.getElementById('editStart').value=start;
+  document.getElementById('editEnd').value=end;
+  document.getElementById('editModal').classList.add('show');
+  document.getElementById('editSummary').focus();
+}
+
+function hideEditModal(){
+  document.getElementById('editModal').classList.remove('show');
+  editingEventId=null;
+}
+
+async function saveEvent(){
+  if(!editingEventId)return;
+  const data={
+    summary:document.getElementById('editSummary').value.trim(),
+    event_date:document.getElementById('editDate').value,
+    start_time:document.getElementById('editStart').value||null,
+    end_time:document.getElementById('editEnd').value||null
+  };
+  if(!data.summary)return;
+  await patch('calendar_cache','id=eq.'+editingEventId,data);
+  hideEditModal();
+  loadDashboard();
+}
+
+async function deleteEvent(){
+  if(!editingEventId)return;
+  if(!confirm('Delete this event?'))return;
+  try{
+    await fetch(`${SB_URL}/rest/v1/calendar_cache?id=eq.${editingEventId}`,{method:'DELETE',headers:H});
+  }catch(e){}
+  hideEditModal();
+  loadDashboard();
 }
 
 // Init
