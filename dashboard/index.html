@@ -223,12 +223,10 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 <!-- QUICK ADD -->
 <button class="fab" onclick="showAddModal()">+</button>
 <div class="add-modal" id="addModal">
-  <input id="addInput" placeholder="Task or event... e.g. 'Lunch with Mom tomorrow'" oninput="detectInputType()">
-  <div id="addTypeHint" style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);letter-spacing:1px;margin-bottom:6px"></div>
+  <input id="addInput" placeholder="Task or event... e.g. 'Lunch with Mom tomorrow'" onkeydown="if(event.key==='Enter')smartAdd()">
   <div class="add-modal-btns">
     <button class="cancel" onclick="hideAddModal()">CANCEL</button>
-    <button class="submit" id="addEventBtn" style="display:none;background:var(--red-dim);color:var(--red-bright);border-color:var(--red-dim)" onclick="quickAddEvent()">ADD EVENT</button>
-    <button class="submit" onclick="quickAdd()">ADD TASK</button>
+    <button class="submit" onclick="smartAdd()">ADD</button>
   </div>
 </div>
 
@@ -383,39 +381,26 @@ function navTo(view){
   switchView(view,navItems[idx]);
 }
 
-function showAddModal(){document.getElementById('addModal').classList.add('show');document.getElementById('addInput').focus();detectInputType()}
-function hideAddModal(){document.getElementById('addModal').classList.remove('show');document.getElementById('addInput').value='';document.getElementById('addTypeHint').textContent='';document.getElementById('addEventBtn').style.display='none'}
+function showAddModal(){document.getElementById('addModal').classList.add('show');document.getElementById('addInput').focus()}
+function hideAddModal(){document.getElementById('addModal').classList.remove('show');document.getElementById('addInput').value=''}
 
 const EVENT_WORDS=/\b(lunch|dinner|breakfast|brunch|meeting|call|appointment|coffee|drinks|party|wedding|ceremony|game|match|concert|show|visit|pickup|drop.?off|class|session|lesson|interview|demo|presentation|hangout|date)\b/i;
 const TIME_WORDS=/\b(at \d|noon|morning|afternoon|evening|\d{1,2}:\d{2}|\d{1,2}\s?(am|pm))\b/i;
 
-function detectInputType(){
-  const val=document.getElementById('addInput').value;
-  const hint=document.getElementById('addTypeHint');
-  const eventBtn=document.getElementById('addEventBtn');
-  if(EVENT_WORDS.test(val)||TIME_WORDS.test(val)){
-    hint.textContent='LOOKS LIKE AN EVENT';
-    hint.style.color='var(--red)';
-    eventBtn.style.display='inline-block';
-  } else {
-    hint.textContent='';
-    eventBtn.style.display='none';
-  }
-}
-
-async function quickAdd(){
+async function smartAdd(){
   const input=document.getElementById('addInput');
   const title=input.value.trim();
   if(!title)return;
-  await insert('tasks',{title:title,business:'Personal',priority:'Medium',due_date:todayStr()});
+  if(EVENT_WORDS.test(title)||TIME_WORDS.test(title)){
+    await quickAddEvent(title);
+  } else {
+    await insert('tasks',{title:title,business:'Personal',priority:'Medium',due_date:todayStr()});
+  }
   hideAddModal();
   loadDashboard();
 }
 
-async function quickAddEvent(){
-  const input=document.getElementById('addInput');
-  const title=input.value.trim();
-  if(!title)return;
+async function quickAddEvent(title){
   const t=todayStr();
   // Parse "tomorrow" or "today"
   let eventDate=t;
