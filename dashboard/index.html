@@ -36,7 +36,8 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 .status.offline{color:var(--text-dim)}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
 .date-bar{font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-dim);letter-spacing:1px}
-.greeting{font-size:16px;font-weight:600;color:var(--text-bright);margin-top:6px}
+.greeting{font-size:13px;font-style:italic;color:var(--text-dim);margin-top:6px;line-height:1.4}
+.greeting-author{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--red-dim);letter-spacing:1px;margin-top:2px}
 .last-sync{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--text-dim);letter-spacing:1px;margin-top:2px}
 
 /* === STATS === */
@@ -203,6 +204,7 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
   </div>
   <div class="date-bar" id="dateBar"></div>
   <div class="greeting" id="greeting"></div>
+  <div class="greeting-author" id="greetingAuthor"></div>
   <div class="last-sync" id="lastSync"></div>
 </div>
 
@@ -236,6 +238,9 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 
 <!-- EMAIL VIEW -->
 <div class="view" id="viewEmail">
+  <div style="display:flex;justify-content:flex-end;padding:10px 20px 0">
+    <button class="task-btn" id="scanBtn" style="border-color:var(--red);color:var(--red)" onclick="refreshEmailView()">REFRESH</button>
+  </div>
   <div class="content" id="emailContent"><div class="loading">LOADING EMAILS</div></div>
 </div>
 
@@ -509,10 +514,12 @@ async function loadDashboard(){
   const now=new Date();
   const t=todayStr();
 
-  // Greeting
-  const hr=parseInt(now.toLocaleTimeString('en-US',{hour:'numeric',hour12:false,timeZone:'America/Chicago'}));
-  const greet=hr<12?'Good morning':'Good afternoon';
-  document.getElementById('greeting').textContent=greet+', Brian';
+  // Daily quote in header
+  const dayOfYear=Math.floor((now-new Date(now.getFullYear(),0,0))/86400000);
+  const qi=(dayOfYear-1)%QUOTES.length;
+  const quote=QUOTES[qi];
+  document.getElementById('greeting').textContent='\u201C'+quote.t+'\u201D';
+  document.getElementById('greetingAuthor').textContent='\u2014 '+quote.a;
   document.getElementById('dateBar').textContent=now.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',timeZone:'America/Chicago'}).toUpperCase();
   document.getElementById('lastSync').textContent='SYNCED '+now.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/Chicago'});
 
@@ -706,11 +713,21 @@ function renderJournal(now){
 }
 
 // === EMAIL SUGGESTIONS ===
+function refreshEmailView(){
+  const btn=document.getElementById('scanBtn');
+  btn.textContent='SCANNING...';
+  btn.style.color='var(--medium)';
+  loadEmailSuggestions().then(()=>{
+    btn.textContent='REFRESH';
+    btn.style.color='var(--red)';
+  });
+}
+
 async function loadEmailSuggestions(){
   const container=document.getElementById('emailContent');
   const suggestions=await q('email_suggestions','status=eq.pending&order=created_at.desc');
   if(!suggestions.length){
-    container.innerHTML='<div class="empty">NO EMAIL SUGGESTIONS<br>Run the morning briefing to scan your inbox</div>';
+    container.innerHTML='<div class="empty">NO PENDING SUGGESTIONS<br>Say /scan-inbox in Claude Code to scan for new emails</div>';
     return;
   }
   let html=`<div class="email-count">${suggestions.length} ACTIONABLE EMAILS FOUND</div>`;
