@@ -320,7 +320,10 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
   <div class="nav-item" onclick="switchView('All',this)"><span class="nav-icon">&#9776;</span>ALL</div>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>
+if(window.pdfjsLib)pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
 const SB_URL = 'https://jazyjbbanyoytxbrdqwf.supabase.co';
 const SB_KEY = 'sb_publishable_IuaRj7kzxSO76mYmZnMmOw_kAThUR5t';
 const H = {'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'};
@@ -907,8 +910,11 @@ async function handleFiles(files){
         await insert('notes',{title:f.name,content:content,type:'reference',business:'Personal',tags:['{image}']});
         if(chip)chip.classList.add('done');
       } else if(f.type==='application/pdf'||f.name.endsWith('.pdf')){
-        await insert('notes',{title:f.name,content:'[PDF uploaded: '+f.name+'] — Use /catch in Claude Code for full text extraction.',type:'reference',business:'Personal',tags:['{pdf}']});
-        if(chip)chip.classList.add('done');
+        if(chip)chip.textContent=f.name+' READING...';
+        const text=await extractPdfText(f);
+        const preview=text.substring(0,200).replace(/\n/g,' ');
+        await insert('notes',{title:f.name,content:text||'[Could not extract text from PDF]',type:'reference',business:'Personal',tags:['{pdf}']});
+        if(chip)chip.classList.add('done');chip.textContent=f.name+' ✓';
       } else {
         // Text-based files
         const text=await f.text();
@@ -935,6 +941,22 @@ function fileToBase64(file){
     reader.onerror=rej;
     reader.readAsDataURL(file);
   });
+}
+
+async function extractPdfText(file){
+  try{
+    const buf=await file.arrayBuffer();
+    const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+    let text='';
+    for(let i=1;i<=pdf.numPages;i++){
+      const page=await pdf.getPage(i);
+      const content=await page.getTextContent();
+      text+=content.items.map(item=>item.str).join(' ')+'\n\n';
+    }
+    return text.trim()||'[No text found in PDF]';
+  }catch(e){
+    return '[PDF extraction failed: '+e.message+']';
+  }
 }
 
 // === EVENT EDIT/DELETE ===
