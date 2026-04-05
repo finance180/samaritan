@@ -182,10 +182,10 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 </div>
 
 <div class="stats-row">
-  <div class="stat-card"><div class="stat-value" id="statToday">-</div><div class="stat-label">Today</div></div>
-  <div class="stat-card"><div class="stat-value" id="statOverdue">-</div><div class="stat-label">Overdue</div></div>
-  <div class="stat-card"><div class="stat-value" id="statDone">-</div><div class="stat-label">Done</div></div>
-  <div class="stat-card"><div class="stat-value" id="statActive">-</div><div class="stat-label">Active</div></div>
+  <div class="stat-card" onclick="navTo('Tasks')"><div class="stat-value" id="statToday">-</div><div class="stat-label">Today</div></div>
+  <div class="stat-card" onclick="navTo('Tasks')"><div class="stat-value" id="statOverdue">-</div><div class="stat-label">Overdue</div></div>
+  <div class="stat-card" onclick="navTo('Tasks')"><div class="stat-value" id="statDone">-</div><div class="stat-label">Done</div></div>
+  <div class="stat-card" onclick="navTo('All')"><div class="stat-value" id="statActive">-</div><div class="stat-label">Active</div></div>
 </div>
 
 <!-- TODAY VIEW -->
@@ -223,9 +223,11 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 <!-- QUICK ADD -->
 <button class="fab" onclick="showAddModal()">+</button>
 <div class="add-modal" id="addModal">
-  <input id="addInput" placeholder="What needs to be done?" autofocus>
+  <input id="addInput" placeholder="Task or event... e.g. 'Lunch with Mom tomorrow'" oninput="detectInputType()">
+  <div id="addTypeHint" style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);letter-spacing:1px;margin-bottom:6px"></div>
   <div class="add-modal-btns">
     <button class="cancel" onclick="hideAddModal()">CANCEL</button>
+    <button class="submit" id="addEventBtn" style="display:none;background:var(--red-dim);color:var(--red-bright);border-color:var(--red-dim)" onclick="quickAddEvent()">ADD EVENT</button>
     <button class="submit" onclick="quickAdd()">ADD TASK</button>
   </div>
 </div>
@@ -375,20 +377,77 @@ async function postponeTask(taskId,el){
 }
 
 // === QUICK ADD ===
-function showAddModal(){document.getElementById('addModal').classList.add('show');document.getElementById('addInput').focus()}
-function hideAddModal(){document.getElementById('addModal').classList.remove('show');document.getElementById('addInput').value=''}
+function navTo(view){
+  const navItems=document.querySelectorAll('.nav-item');
+  const idx={Tasks:0,Calendar:1,Email:2,Journal:3,All:4}[view]||0;
+  switchView(view,navItems[idx]);
+}
+
+function showAddModal(){document.getElementById('addModal').classList.add('show');document.getElementById('addInput').focus();detectInputType()}
+function hideAddModal(){document.getElementById('addModal').classList.remove('show');document.getElementById('addInput').value='';document.getElementById('addTypeHint').textContent='';document.getElementById('addEventBtn').style.display='none'}
+
+const EVENT_WORDS=/\b(lunch|dinner|breakfast|brunch|meeting|call|appointment|coffee|drinks|party|wedding|ceremony|game|match|concert|show|visit|pickup|drop.?off|class|session|lesson|interview|demo|presentation|hangout|date)\b/i;
+const TIME_WORDS=/\b(at \d|noon|morning|afternoon|evening|\d{1,2}:\d{2}|\d{1,2}\s?(am|pm))\b/i;
+
+function detectInputType(){
+  const val=document.getElementById('addInput').value;
+  const hint=document.getElementById('addTypeHint');
+  const eventBtn=document.getElementById('addEventBtn');
+  if(EVENT_WORDS.test(val)||TIME_WORDS.test(val)){
+    hint.textContent='LOOKS LIKE AN EVENT';
+    hint.style.color='var(--red)';
+    eventBtn.style.display='inline-block';
+  } else {
+    hint.textContent='';
+    eventBtn.style.display='none';
+  }
+}
 
 async function quickAdd(){
   const input=document.getElementById('addInput');
   const title=input.value.trim();
   if(!title)return;
-  const t=todayStr();
-  await insert('tasks',{title:title,business:'Personal',priority:'Medium',due_date:t});
+  await insert('tasks',{title:title,business:'Personal',priority:'Medium',due_date:todayStr()});
   hideAddModal();
   loadDashboard();
 }
 
-document.addEventListener('keydown',e=>{if(e.key==='Escape')hideAddModal()});
+async function quickAddEvent(){
+  const input=document.getElementById('addInput');
+  const title=input.value.trim();
+  if(!title)return;
+  const t=todayStr();
+  // Parse "tomorrow" or "today"
+  let eventDate=t;
+  if(/\btomorrow\b/i.test(title)){
+    const d=new Date();d.setDate(d.getDate()+1);
+    eventDate=d.toLocaleDateString('en-CA',{timeZone:'America/Chicago'});
+  }
+  // Try to extract time
+  let startTime='12:00';
+  const timeMatch=title.match(/\bat\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+  if(timeMatch){
+    let hr=parseInt(timeMatch[1]);
+    const min=timeMatch[2]||'00';
+    const ampm=timeMatch[3];
+    if(ampm&&ampm.toLowerCase()==='pm'&&hr<12)hr+=12;
+    if(ampm&&ampm.toLowerCase()==='am'&&hr===12)hr=0;
+    startTime=String(hr).padStart(2,'0')+':'+min;
+  } else if(/\bnoon\b/i.test(title)){startTime='12:00'}
+  else if(/\bmorning\b/i.test(title)){startTime='09:00'}
+  else if(/\bafternoon\b/i.test(title)){startTime='14:00'}
+  else if(/\bevening\b/i.test(title)){startTime='18:00'}
+  // Clean title
+  const cleanTitle=title.replace(/\b(tomorrow|today|at\s+\d{1,2}(:\d{2})?\s*(am|pm)?|noon|morning|afternoon|evening)\b/gi,'').replace(/\s+/g,' ').trim();
+  // Calculate end time (+1 hour)
+  const [sh,sm]=startTime.split(':').map(Number);
+  const endTime=String(sh+1).padStart(2,'0')+':'+String(sm).padStart(2,'0');
+  await insert('calendar_cache',{event_date:eventDate,start_time:startTime,end_time:endTime,summary:cleanTitle||title,all_day:false,location:''});
+  hideAddModal();
+  loadDashboard();
+}
+
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){hideAddModal();hideEditModal()}});
 
 // === DATA ===
 let todayTasks=[],overdueTasks=[],cachedEvents=[];
@@ -615,28 +674,38 @@ async function loadEmailSuggestions(){
         </div>
       </div>
       <div class="email-btns">
-        <button class="email-btn approve" onclick="approveEmail(${s.id},'${s.suggested_title.replace(/'/g,"\\'")}','${s.suggested_business}','${s.suggested_priority}','${s.message_id}','${s.subject.replace(/'/g,"\\'")}')">ADD TASK</button>
-        <button class="email-btn dismiss" onclick="dismissEmail(${s.id})">DISMISS</button>
+        <button class="email-btn approve" onclick="approveEmail(${s.id},'${s.suggested_title.replace(/'/g,"\\'")}','${s.suggested_business}','${s.suggested_priority}','${s.message_id}','${s.subject.replace(/'/g,"\\'")}','${(s.action_url||'').replace(/'/g,"\\'")}')">ADD TASK</button>
+        ${s.action_url?`<a class="email-btn" href="${s.action_url}" target="_blank" style="border-color:var(--red);color:var(--red);text-decoration:none;text-align:center">OPEN</a>`:''}
+        <button class="email-btn dismiss" onclick="dismissEmail(${s.id},'${s.from_address.replace(/'/g,"\\'")}')">DISMISS</button>
       </div>
     </div>`;
   });
   container.innerHTML=html;
 }
 
-async function approveEmail(id,title,business,priority,messageId,subject){
+async function approveEmail(id,title,business,priority,messageId,subject,actionUrl){
   const card=document.getElementById('email-'+id);
   card.classList.add('approved');
-  // Create the task
-  await insert('tasks',{title:title,business:business,priority:priority,notes:'Email ref: '+subject+' (ID: '+messageId+')',due_date:todayStr()});
-  // Mark suggestion as approved
+  let notes='Email ref: '+subject+' (ID: '+messageId+')';
+  if(actionUrl)notes+='\nAction: '+actionUrl;
+  await insert('tasks',{title:title,business:business,priority:priority,notes:notes,due_date:todayStr()});
   await patch('email_suggestions','id=eq.'+id,{status:'approved'});
   setTimeout(()=>loadEmailSuggestions(),400);
 }
 
-async function dismissEmail(id){
+async function dismissEmail(id,fromAddr){
   const card=document.getElementById('email-'+id);
   card.classList.add('dismissed');
   await patch('email_suggestions','id=eq.'+id,{status:'dismissed'});
+  // Learn: check how many times this sender has been dismissed
+  if(fromAddr){
+    const domain=fromAddr.replace(/.*@/,'').replace(/>.*/,'').toLowerCase();
+    const dismissed=await q('email_suggestions','from_domain=eq.'+encodeURIComponent(domain)+'&status=eq.dismissed&select=id');
+    if(dismissed.length>=3){
+      // Auto-add skip rule after 3 dismissals from same domain
+      await insert('email_rules',{from_pattern:domain,action:'skip',reason:'Auto-learned: dismissed 3+ times'});
+    }
+  }
   setTimeout(()=>loadEmailSuggestions(),400);
 }
 
