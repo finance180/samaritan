@@ -239,7 +239,7 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 <!-- EMAIL VIEW -->
 <div class="view" id="viewEmail">
   <div style="display:flex;justify-content:flex-end;padding:10px 20px 0">
-    <button class="task-btn" id="scanBtn" style="border-color:var(--red);color:var(--red)" onclick="refreshEmailView()">REFRESH</button>
+    <button class="task-btn" id="scanBtn" style="border-color:var(--red);color:var(--red)" onclick="refreshEmailView()">SCAN INBOX</button>
   </div>
   <div class="content" id="emailContent"><div class="loading">LOADING EMAILS</div></div>
 </div>
@@ -713,14 +713,26 @@ function renderJournal(now){
 }
 
 // === EMAIL SUGGESTIONS ===
-function refreshEmailView(){
+async function refreshEmailView(){
   const btn=document.getElementById('scanBtn');
   btn.textContent='SCANNING...';
   btn.style.color='var(--medium)';
-  loadEmailSuggestions().then(()=>{
-    btn.textContent='REFRESH';
-    btn.style.color='var(--red)';
-  });
+  try{
+    const res=await fetch(SB_URL+'/functions/v1/scan-inbox',{method:'POST',headers:{'Content-Type':'application/json'}});
+    const data=await res.json();
+    if(data.added>0){
+      btn.textContent=data.added+' NEW FOUND';
+      btn.style.color='var(--low)';
+    } else {
+      btn.textContent='NO NEW EMAILS';
+      btn.style.color='var(--text-dim)';
+    }
+  }catch(e){
+    btn.textContent='SCAN FAILED';
+    btn.style.color='var(--high)';
+  }
+  await loadEmailSuggestions();
+  setTimeout(()=>{btn.textContent='SCAN INBOX';btn.style.color='var(--red)'},3000);
 }
 
 async function loadEmailSuggestions(){
