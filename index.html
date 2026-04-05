@@ -912,9 +912,20 @@ async function handleFiles(files){
       } else if(f.type==='application/pdf'||f.name.endsWith('.pdf')){
         if(chip)chip.textContent=f.name+' READING...';
         const text=await extractPdfText(f);
-        const preview=text.substring(0,200).replace(/\n/g,' ');
-        await insert('notes',{title:f.name,content:text||'[Could not extract text from PDF]',type:'reference',business:'Personal',tags:['{pdf}']});
-        if(chip)chip.classList.add('done');chip.textContent=f.name+' ✓';
+        // Save as note
+        const noteRes=await insert('notes',{title:f.name,content:text||'[Could not extract text]',type:'reference',business:'Personal',tags:['{pdf}']});
+        // Auto-detect financial statement
+        const isFinancial=/statement date|amount due|payment due|outstanding balance|account number|maturity date/i.test(text);
+        if(isFinancial&&noteRes&&noteRes[0]){
+          if(chip)chip.textContent=f.name+' PARSING...';
+          const fs=parseFinancialStatement(text);
+          fs.source_note_id=noteRes[0].id;
+          fs.raw_text=text.substring(0,500);
+          await insert('financial_statements',fs);
+          if(chip){chip.classList.add('done');chip.textContent=fs.lender+' ✓'}
+        } else {
+          if(chip){chip.classList.add('done');chip.textContent=f.name+' ✓'}
+        }
       } else {
         // Text-based files
         const text=await f.text();
@@ -941,6 +952,58 @@ function fileToBase64(file){
     reader.onerror=rej;
     reader.readAsDataURL(file);
   });
+}
+
+function parseFinancialStatement(text){
+  const fs={lender:'Unknown',account_number:'',statement_date:null,payment_due_date:null,amount_due:null,outstanding_balance:null,regular_payment:null,vehicle_or_asset:'',business:'Personal'};
+  // Detect lender
+  const lenders=[
+    [/toyota\s*financial/i,'Toyota Financial Services'],
+    [/u\.?s\.?\s*bank/i,'US Bank'],
+    [/synchrony|onepay/i,'Synchrony'],
+    [/chase/i,'JPMorgan Chase'],
+    [/capital\s*one/i,'Capital One'],
+    [/wells\s*fargo/i,'Wells Fargo'],
+    [/ally\s*financial/i,'Ally Financial'],
+    [/ford\s*credit|ford\s*motor/i,'Ford Credit'],
+    [/honda\s*financial/i,'Honda Financial'],
+    [/hyundai\s*capital/i,'Hyundai Capital'],
+    [/bmw\s*financial/i,'BMW Financial'],
+    [/american\s*express|amex/i,'American Express'],
+    [/discover/i,'Discover'],
+    [/citi|citibank/i,'Citibank'],
+    [/bank\s*of\s*america/i,'Bank of America']
+  ];
+  for(const[re,name]of lenders){if(re.test(text)){fs.lender=name;break}}
+  // Account number
+  const acct=text.match(/account\s*(?:number|#|no\.?)\s*[:.]?\s*([0-9\s\-]{5,20})/i);
+  if(acct)fs.account_number=acct[1].trim();
+  // Dates
+  const stmtDate=text.match(/statement\s*date\s*[:.]?\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/i);
+  if(stmtDate)fs.statement_date=parseUSDate(stmtDate[1]);
+  const dueDate=text.match(/(?:payment\s*)?due\s*date\s*[:.]?\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/i);
+  if(dueDate)fs.payment_due_date=parseUSDate(dueDate[1]);
+  // Amounts
+  const amtDue=text.match(/(?:total\s*)?amount\s*due\s*[:.]?\s*\$?([\d,]+\.?\d*)/i);
+  if(amtDue)fs.amount_due=parseFloat(amtDue[1].replace(/,/g,''));
+  const balance=text.match(/outstanding\s*balance\s*\*?\s*[:.]?\s*\$?([\d,]+\.?\d*)/i);
+  if(balance)fs.outstanding_balance=parseFloat(balance[1].replace(/,/g,''));
+  const regPmt=text.match(/regular\s*payment\s*(?:amount)?\s*[:.]?\s*\$?([\d,]+\.?\d*)/i);
+  if(regPmt)fs.regular_payment=parseFloat(regPmt[1].replace(/,/g,''));
+  // Vehicle
+  const vehicle=text.match(/vehicle\s*(?:\/\s*last\s*\d+\s*of\s*vin)?\s*[:.]?\s*([A-Za-z]+(?:\s*\/\s*[A-Za-z0-9\-]+)?)/i);
+  if(vehicle)fs.vehicle_or_asset=vehicle[1].trim();
+  // Business detection
+  if(/happy\s*pup|manor/i.test(text))fs.business='Happy Pup Manor';
+  return fs;
+}
+
+function parseUSDate(s){
+  const parts=s.split('/');
+  if(parts.length!==3)return null;
+  let[m,d,y]=parts;
+  if(y.length===2)y='20'+y;
+  return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
 }
 
 async function extractPdfText(file){

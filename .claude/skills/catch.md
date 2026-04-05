@@ -69,6 +69,35 @@ curl -sL "${SUPABASE_URL}/rest/v1/calendar_cache" "${HEADERS[@]}" \
   -d '{"event_date":"YYYY-MM-DD","start_time":"HH:MM","end_time":"HH:MM","summary":"...","location":"","all_day":false}'
 ```
 
+### Is it a FINANCIAL STATEMENT?
+Keywords in extracted text: "statement date", "amount due", "payment due", "outstanding balance", "account number", "maturity date", lender names like "Toyota Financial", "US Bank", "Synchrony", "Chase", "Wells Fargo", "Capital One"
+→ Parse the following fields from the text:
+  - lender (company name)
+  - account_number
+  - statement_date (YYYY-MM-DD)
+  - payment_due_date (YYYY-MM-DD)
+  - amount_due (numeric)
+  - outstanding_balance (numeric)
+  - regular_payment (numeric)
+  - vehicle_or_asset (if applicable)
+  - business (infer: Happy Pup Manor for business vehicles/equipment, Personal otherwise)
+→ Store the raw note in `notes` table AND insert parsed data into `financial_statements` table:
+
+```bash
+curl -sL "${SUPABASE_URL}/rest/v1/financial_statements" "${HEADERS[@]}" \
+  -H "Content-Type: application/json" -H "Prefer: return=representation" \
+  -d '{"lender":"...","account_number":"...","statement_date":"...","payment_due_date":"...","amount_due":0,"outstanding_balance":0,"regular_payment":0,"vehicle_or_asset":"...","business":"...","source_note_id":NOTE_ID,"raw_text":"..."}'
+```
+
+**Known lender patterns:**
+- "Toyota Financial Services" → Toyota Financial Services
+- "U.S. Bank" / "US Bank" → US Bank
+- "Synchrony" / "OnePay" → Synchrony
+- "Chase" → JPMorgan Chase
+- "Capital One" → Capital One
+- "Wells Fargo" → Wells Fargo
+- "Ally Financial" → Ally Financial
+
 ## Tagging
 
 When storing notes, add relevant tags:
