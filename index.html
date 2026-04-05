@@ -154,6 +154,20 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 .email-btn.approve{border-color:var(--low);color:var(--low)}
 .email-btn.dismiss{border-color:var(--text-dim);color:var(--text-dim)}
 .email-count{font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-dim);letter-spacing:1px;padding:8px 0}
+
+/* === NOTES === */
+.note-card{background:var(--bg-card);border:1px solid var(--border);border-left:3px solid var(--red-dim);border-radius:2px;padding:12px 14px;margin-bottom:6px;cursor:pointer;transition:all .15s}
+.note-card:active{background:var(--bg-card-hover)}
+.note-card.type-link{border-left-color:var(--medium)}
+.note-card.type-idea{border-left-color:var(--low)}
+.note-card.type-reference{border-left-color:#6666cc}
+.note-card.pinned{border-left-color:var(--red-bright)}
+.note-title{font-size:14px;font-weight:600;color:var(--text-bright);line-height:1.3;margin-bottom:4px}
+.note-preview{font-size:12px;color:var(--text-dim);line-height:1.4;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.note-meta{display:flex;gap:8px;margin-top:6px;font-size:10px;color:var(--text-dim);font-family:'Share Tech Mono',monospace}
+.note-tag{background:var(--border);color:var(--text-dim);padding:1px 6px;border-radius:2px;font-size:9px}
+.note-link{color:var(--medium);text-decoration:none;font-size:12px;word-break:break-all}
+.note-type-btn.active,.note-biz-btn.active{border-color:var(--red)!important;color:var(--red)!important}
 .nav-item{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px;color:var(--text-dim);cursor:pointer;font-size:9px;font-family:'Share Tech Mono',monospace;letter-spacing:1px;text-transform:uppercase;min-height:44px;justify-content:center;transition:color .2s}
 .nav-item.active{color:var(--red-bright)}
 .nav-icon{font-size:18px}
@@ -214,6 +228,15 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
   <div class="content" id="emailContent"><div class="loading">LOADING EMAILS</div></div>
 </div>
 
+<!-- NOTES VIEW -->
+<div class="view" id="viewNotes">
+  <div class="search-bar" style="display:flex;gap:8px;padding:10px 20px 6px">
+    <input class="search-input" id="noteSearchInput" placeholder="SEARCH NOTES..." oninput="filterNotes()" style="flex:1">
+    <button class="task-btn" style="border-color:var(--red);color:var(--red);white-space:nowrap;padding:0 14px" onclick="showNoteModal()">+ NOTE</button>
+  </div>
+  <div class="content" id="notesContent"><div class="loading">LOADING</div></div>
+</div>
+
 <!-- ALL VIEW -->
 <div class="view" id="viewAll">
   <div class="search-bar"><input class="search-input" id="searchInput" placeholder="SEARCH TASKS..." oninput="filterAllTasks()"></div>
@@ -227,6 +250,32 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
   <div class="add-modal-btns">
     <button class="cancel" onclick="hideAddModal()">CANCEL</button>
     <button class="submit" onclick="smartAdd()">ADD</button>
+  </div>
+</div>
+
+<!-- NOTE ADD/EDIT MODAL -->
+<div class="edit-modal" id="noteModal">
+  <label>TITLE</label>
+  <input id="noteTitle" placeholder="Note title (optional)">
+  <label>CONTENT</label>
+  <textarea id="noteContent" placeholder="Paste anything — links, text, ideas..." style="width:100%;background:var(--bg-card);border:1px solid var(--red-dim);border-radius:4px;padding:12px;color:var(--text-bright);font-size:14px;font-family:'Rajdhani',sans-serif;outline:none;min-height:120px;resize:vertical"></textarea>
+  <label>TYPE</label>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <button class="task-btn note-type-btn active" onclick="setNoteType('text',this)">TEXT</button>
+    <button class="task-btn note-type-btn" onclick="setNoteType('link',this)">LINK</button>
+    <button class="task-btn note-type-btn" onclick="setNoteType('idea',this)">IDEA</button>
+    <button class="task-btn note-type-btn" onclick="setNoteType('reference',this)">REF</button>
+  </div>
+  <label>BUSINESS</label>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <button class="task-btn note-biz-btn active" onclick="setNoteBiz('Personal',this)">PERSONAL</button>
+    <button class="task-btn note-biz-btn" onclick="setNoteBiz('Happy Pup Manor',this)">HPM</button>
+    <button class="task-btn note-biz-btn" onclick="setNoteBiz('Reseller Business',this)">RESELLER</button>
+  </div>
+  <div class="edit-modal-btns">
+    <button class="delete" id="noteDeleteBtn" style="display:none" onclick="deleteNote()">DELETE</button>
+    <button class="cancel" onclick="hideNoteModal()">CANCEL</button>
+    <button class="save" onclick="saveNote()">SAVE</button>
   </div>
 </div>
 
@@ -252,7 +301,7 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
   <div class="nav-item active" onclick="switchView('Tasks',this)"><span class="nav-icon">&#9673;</span>TODAY</div>
   <div class="nav-item" onclick="switchView('Calendar',this)"><span class="nav-icon">&#9638;</span>WEEK</div>
   <div class="nav-item" onclick="switchView('Email',this)"><span class="nav-icon">&#9993;</span>EMAIL</div>
-  <div class="nav-item" onclick="switchView('Journal',this)"><span class="nav-icon">&#9830;</span>JOURNAL</div>
+  <div class="nav-item" onclick="switchView('Notes',this)"><span class="nav-icon">&#9998;</span>NOTES</div>
   <div class="nav-item" onclick="switchView('All',this)"><span class="nav-icon">&#9776;</span>ALL</div>
 </div>
 
@@ -341,6 +390,7 @@ function switchView(name,el){
   if(name==='All')loadAllTasks();
   if(name==='Calendar')loadWeekView();
   if(name==='Email')loadEmailSuggestions();
+  if(name==='Notes')loadNotes();
 }
 
 function filterBiz(biz,el){
@@ -377,7 +427,7 @@ async function postponeTask(taskId,el){
 // === QUICK ADD ===
 function navTo(view){
   const navItems=document.querySelectorAll('.nav-item');
-  const idx={Tasks:0,Calendar:1,Email:2,Journal:3,All:4}[view]||0;
+  const idx={Tasks:0,Calendar:1,Email:2,Notes:3,All:4}[view]||0;
   switchView(view,navItems[idx]);
 }
 
@@ -692,6 +742,93 @@ async function dismissEmail(id,fromAddr){
     }
   }
   setTimeout(()=>loadEmailSuggestions(),400);
+}
+
+// === NOTES ===
+let allNotesCache=[];
+let editingNoteId=null;
+let noteType='text';
+let noteBiz='Personal';
+
+function setNoteType(t,el){noteType=t;document.querySelectorAll('.note-type-btn').forEach(b=>b.classList.remove('active'));el.classList.add('active')}
+function setNoteBiz(b,el){noteBiz=b;document.querySelectorAll('.note-biz-btn').forEach(btn=>btn.classList.remove('active'));el.classList.add('active')}
+
+function showNoteModal(note){
+  editingNoteId=note?note.id:null;
+  document.getElementById('noteTitle').value=note?note.title:'';
+  document.getElementById('noteContent').value=note?note.content:'';
+  noteType=note?note.type:'text';
+  noteBiz=note?note.business:'Personal';
+  document.querySelectorAll('.note-type-btn').forEach(b=>{b.classList.toggle('active',b.textContent===(noteType==='reference'?'REF':noteType).toUpperCase())});
+  document.querySelectorAll('.note-biz-btn').forEach(b=>{
+    const map={'PERSONAL':'Personal','HPM':'Happy Pup Manor','RESELLER':'Reseller Business'};
+    b.classList.toggle('active',map[b.textContent]===noteBiz);
+  });
+  document.getElementById('noteDeleteBtn').style.display=note?'inline-block':'none';
+  document.getElementById('noteModal').classList.add('show');
+  document.getElementById(note?'noteContent':'noteTitle').focus();
+}
+
+function hideNoteModal(){document.getElementById('noteModal').classList.remove('show');editingNoteId=null}
+
+async function saveNote(){
+  const title=document.getElementById('noteTitle').value.trim();
+  const content=document.getElementById('noteContent').value.trim();
+  if(!content&&!title)return;
+  // Auto-detect links
+  const urlMatch=content.match(/https?:\/\/[^\s]+/);
+  const url=urlMatch?urlMatch[0]:'';
+  const finalType=url&&noteType==='text'?'link':noteType;
+  const data={title:title||content.substring(0,60),content:content,type:finalType,url:url,business:noteBiz};
+  if(editingNoteId){
+    data.updated_at=new Date().toISOString();
+    await patch('notes','id=eq.'+editingNoteId,data);
+  } else {
+    await insert('notes',data);
+  }
+  hideNoteModal();
+  loadNotes();
+}
+
+async function deleteNote(){
+  if(!editingNoteId||!confirm('Delete this note?'))return;
+  try{await fetch(`${SB_URL}/rest/v1/notes?id=eq.${editingNoteId}`,{method:'DELETE',headers:H})}catch(e){}
+  hideNoteModal();
+  loadNotes();
+}
+
+async function loadNotes(){
+  allNotesCache=await q('notes','order=pinned.desc,created_at.desc');
+  renderNotes(allNotesCache);
+}
+
+function filterNotes(){
+  const term=document.getElementById('noteSearchInput').value.toLowerCase();
+  const filtered=term?allNotesCache.filter(n=>n.title.toLowerCase().includes(term)||n.content.toLowerCase().includes(term)||(n.tags||[]).some(t=>t.toLowerCase().includes(term))):allNotesCache;
+  renderNotes(filtered);
+}
+
+function renderNotes(notes){
+  const container=document.getElementById('notesContent');
+  if(!notes.length){container.innerHTML='<div class="empty">NO NOTES YET<br>Tap + NOTE to capture something</div>';return}
+  let html='';
+  notes.forEach(n=>{
+    const date=new Date(n.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',timeZone:'America/Chicago'});
+    const tags=(n.tags||[]).map(t=>`<span class="note-tag">${t}</span>`).join('');
+    const preview=n.type==='link'&&n.url?`<a class="note-link" href="${n.url}" target="_blank" onclick="event.stopPropagation()">${n.url}</a>`:`<div class="note-preview">${n.content.replace(/</g,'&lt;')}</div>`;
+    html+=`<div class="note-card type-${n.type}${n.pinned?' pinned':''}" onclick='showNoteModal(${JSON.stringify(n).replace(/'/g,"&#39;")})'>
+      ${n.title?`<div class="note-title">${n.title}</div>`:''}
+      ${preview}
+      <div class="note-meta">
+        <span>${n.note_id}</span>
+        <span>${n.type.toUpperCase()}</span>
+        <span>${n.business}</span>
+        <span>${date}</span>
+        ${tags}
+      </div>
+    </div>`;
+  });
+  container.innerHTML=html;
 }
 
 // === EVENT EDIT/DELETE ===
