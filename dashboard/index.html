@@ -168,6 +168,17 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 .note-tag{background:var(--border);color:var(--text-dim);padding:1px 6px;border-radius:2px;font-size:9px}
 .note-link{color:var(--medium);text-decoration:none;font-size:12px;word-break:break-all}
 .note-type-btn.active,.note-biz-btn.active{border-color:var(--red)!important;color:var(--red)!important}
+
+/* === DROP ZONE === */
+.drop-zone{margin:0 20px 8px;border:2px dashed var(--border);border-radius:4px;padding:16px;text-align:center;transition:all .2s;cursor:pointer;min-height:44px}
+.drop-zone.drag-over{border-color:var(--red-bright);background:rgba(196,30,30,0.08)}
+.drop-zone-text{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);letter-spacing:1px}
+.drop-zone.drag-over .drop-zone-text{color:var(--red-bright)}
+.drop-zone.uploading .drop-zone-text{color:var(--medium)}
+.file-preview{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.file-chip{background:var(--bg-card);border:1px solid var(--border);border-radius:2px;padding:4px 8px;font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--text-dim);display:flex;align-items:center;gap:4px}
+.file-chip.done{border-color:var(--low);color:var(--low)}
+.file-chip.error{border-color:var(--high);color:var(--high)}
 .nav-item{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px;color:var(--text-dim);cursor:pointer;font-size:9px;font-family:'Share Tech Mono',monospace;letter-spacing:1px;text-transform:uppercase;min-height:44px;justify-content:center;transition:color .2s}
 .nav-item.active{color:var(--red-bright)}
 .nav-icon{font-size:18px}
@@ -233,6 +244,10 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
   <div class="search-bar" style="display:flex;gap:8px;padding:10px 20px 6px">
     <input class="search-input" id="noteSearchInput" placeholder="SEARCH NOTES..." oninput="filterNotes()" style="flex:1">
     <button class="task-btn" style="border-color:var(--red);color:var(--red);white-space:nowrap;padding:0 14px" onclick="showNoteModal()">+ NOTE</button>
+  </div>
+  <div class="drop-zone" id="dropZone">
+    <input type="file" id="fileInput" multiple style="display:none" onchange="handleFiles(this.files)">
+    <div class="drop-zone-text" onclick="document.getElementById('fileInput').click()">DROP FILES HERE OR TAP TO UPLOAD</div>
   </div>
   <div class="content" id="notesContent"><div class="loading">LOADING</div></div>
 </div>
@@ -829,6 +844,97 @@ function renderNotes(notes){
     </div>`;
   });
   container.innerHTML=html;
+}
+
+// === DRAG & DROP / FILE UPLOAD ===
+(function(){
+  const dz=document.getElementById('dropZone');
+  if(!dz)return;
+  ['dragenter','dragover'].forEach(e=>dz.addEventListener(e,ev=>{ev.preventDefault();dz.classList.add('drag-over')}));
+  ['dragleave','drop'].forEach(e=>dz.addEventListener(e,ev=>{ev.preventDefault();dz.classList.remove('drag-over')}));
+  dz.addEventListener('drop',ev=>{
+    const files=ev.dataTransfer.files;
+    const text=ev.dataTransfer.getData('text/plain');
+    const html=ev.dataTransfer.getData('text/html');
+    const url=ev.dataTransfer.getData('text/uri-list');
+    if(files.length>0){handleFiles(files)}
+    else if(url){handleDroppedUrl(url)}
+    else if(text){handleDroppedText(text,html)}
+  });
+})();
+
+async function handleDroppedUrl(url){
+  const dz=document.getElementById('dropZone');
+  dz.classList.add('uploading');
+  dz.querySelector('.drop-zone-text').textContent='SAVING LINK...';
+  const title=url.replace(/https?:\/\/(www\.)?/,'').split('/')[0];
+  await insert('notes',{title:title,content:url,type:'link',url:url,business:'Personal'});
+  dz.classList.remove('uploading');
+  dz.querySelector('.drop-zone-text').textContent='DROP FILES HERE OR TAP TO UPLOAD';
+  loadNotes();
+}
+
+async function handleDroppedText(text,html){
+  const dz=document.getElementById('dropZone');
+  dz.classList.add('uploading');
+  dz.querySelector('.drop-zone-text').textContent='SAVING NOTE...';
+  const urlMatch=text.match(/https?:\/\/[^\s]+/);
+  const type=urlMatch?'link':'text';
+  const title=text.substring(0,60).replace(/\n/g,' ');
+  await insert('notes',{title:title,content:text,type:type,url:urlMatch?urlMatch[0]:'',business:'Personal'});
+  dz.classList.remove('uploading');
+  dz.querySelector('.drop-zone-text').textContent='DROP FILES HERE OR TAP TO UPLOAD';
+  loadNotes();
+}
+
+async function handleFiles(files){
+  const dz=document.getElementById('dropZone');
+  let previewHtml='<div class="file-preview">';
+  for(const f of files){
+    previewHtml+=`<div class="file-chip" id="chip-${f.name.replace(/\W/g,'')}">${f.name}</div>`;
+  }
+  previewHtml+='</div>';
+  dz.innerHTML=dz.innerHTML.split('<div class="file-preview">')[0]+previewHtml;
+
+  for(const f of files){
+    const chipId='chip-'+f.name.replace(/\W/g,'');
+    const chip=document.getElementById(chipId);
+    try{
+      if(f.type.startsWith('image/')){
+        // Read image as base64 and store
+        const b64=await fileToBase64(f);
+        const content='[Image: '+f.name+']\n\nBase64 data stored. Use /catch with this image in Claude Code for OCR.';
+        await insert('notes',{title:f.name,content:content,type:'reference',business:'Personal',tags:['{image}']});
+        if(chip)chip.classList.add('done');
+      } else if(f.type==='application/pdf'||f.name.endsWith('.pdf')){
+        await insert('notes',{title:f.name,content:'[PDF uploaded: '+f.name+'] — Use /catch in Claude Code for full text extraction.',type:'reference',business:'Personal',tags:['{pdf}']});
+        if(chip)chip.classList.add('done');
+      } else {
+        // Text-based files
+        const text=await f.text();
+        const title=f.name;
+        const urlMatch=text.match(/https?:\/\/[^\s]+/);
+        await insert('notes',{title:title,content:text.substring(0,10000),type:urlMatch?'link':'text',url:urlMatch?urlMatch[0]:'',business:'Personal'});
+        if(chip)chip.classList.add('done');
+      }
+    }catch(e){
+      if(chip){chip.classList.add('error');chip.textContent=f.name+' FAILED'}
+    }
+  }
+
+  setTimeout(()=>{
+    dz.innerHTML='<input type="file" id="fileInput" multiple style="display:none" onchange="handleFiles(this.files)"><div class="drop-zone-text" onclick="document.getElementById(\'fileInput\').click()">DROP FILES HERE OR TAP TO UPLOAD</div>';
+    loadNotes();
+  },1500);
+}
+
+function fileToBase64(file){
+  return new Promise((res,rej)=>{
+    const reader=new FileReader();
+    reader.onload=()=>res(reader.result);
+    reader.onerror=rej;
+    reader.readAsDataURL(file);
+  });
 }
 
 // === EVENT EDIT/DELETE ===
