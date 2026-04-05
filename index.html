@@ -912,8 +912,17 @@ async function handleFiles(files){
       } else if(f.type==='application/pdf'||f.name.endsWith('.pdf')){
         if(chip)chip.textContent=f.name+' READING...';
         const text=await extractPdfText(f);
+        // Auto-tag based on content
+        const tags=['{pdf}'];
+        if(/rpg|dungeon|character|armor|spell|hitpoint|hit point|saving throw|ability score|game master|player character/i.test(text))tags.push('{rpg}','{rules}');
+        if(/invoice|receipt|total|subtotal|tax|payment|paid/i.test(text)&&!/rpg|spell/i.test(text))tags.push('{financial}');
+        if(/contract|agreement|terms|whereas|party|herein/i.test(text))tags.push('{legal}');
+        if(/recipe|ingredients|preheat|tablespoon|teaspoon/i.test(text))tags.push('{recipe}');
+        if(/manual|instructions|setup|installation|warranty/i.test(text))tags.push('{manual}');
+        // Clean title
+        const cleanName=f.name.replace(/\.pdf$/i,'').replace(/[_-]/g,' ');
         // Save as note
-        const noteRes=await insert('notes',{title:f.name,content:text||'[Could not extract text]',type:'reference',business:'Personal',tags:['{pdf}']});
+        const noteRes=await insert('notes',{title:cleanName,content:text||'[Could not extract text]',type:'reference',business:'Personal',tags:tags});
         // Auto-detect financial statement
         const isFinancial=/statement date|amount due|payment due|outstanding balance|account number|maturity date/i.test(text);
         if(isFinancial&&noteRes&&noteRes[0]){
