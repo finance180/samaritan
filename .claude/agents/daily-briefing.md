@@ -117,23 +117,28 @@ Format (only show if there are results):
 - Linked to today's tasks: "CPC documentation requirements"
 ```
 
-**Step 4.6 — Active Goals:**
-Show active goals with progress and next suggested task.
+**Step 4.6 — Weekly Goals:**
+Show active **weekly** goals with progress and next suggested task.
 
 ```bash
-curl -sL "${SUPABASE_URL}/rest/v1/goals?status=eq.Active&order=target_date" "${HEADERS[@]}"
+curl -sL "${SUPABASE_URL}/rest/v1/goals?status=eq.Active&goal_type=eq.weekly&order=target_date" "${HEADERS[@]}"
 ```
 
-For each goal, check for staleness (most recent completed task older than 7 days with no active task due soon):
+For each weekly goal, check for staleness (most recent completed task older than 7 days with no active task due soon):
 ```bash
 curl -sL "${SUPABASE_URL}/rest/v1/tasks?goal_id=eq.G-XXX&status=eq.Active&limit=1" "${HEADERS[@]}"
 ```
 
-Format (only show if there are active goals):
+Format (only show if there are active weekly goals):
 ```
-🎯 Active Goals:
+🎯 Weekly Goals:
 - "Submit all compliance docs" (Reseller) — 60% | Target: Apr 30 → Next: File CPC certification
 - "Hire grooming assistant" (HPM) — 25% | ⚠️ Stale 8 days → Next: Post job listing
+```
+
+**Weekly Review addition:** Also show monthly goal health:
+```bash
+curl -sL "${SUPABASE_URL}/rest/v1/goals?status=eq.Active&goal_type=eq.monthly&order=target_date" "${HEADERS[@]}"
 ```
 
 **Step 5 — Check for Unreplied Follow-ups:**

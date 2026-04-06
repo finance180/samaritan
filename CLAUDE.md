@@ -95,6 +95,8 @@ curl -sL -X DELETE "${SUPABASE_URL}/rest/v1/tasks?task_id=eq.T-001" "${HEADERS[@
 | title | Yes | — | Concise goal name |
 | description | No | '' | What success looks like |
 | business | No | Personal | Happy Pup Manor, Reseller Business, or Personal |
+| goal_type | No | weekly | annual, quarterly, monthly, or weekly |
+| parent_goal_id | No | — | Links to parent goal (e.g., weekly → monthly parent) |
 | target_date | No | — | YYYY-MM-DD format |
 | status | No | Active | Active, On-Hold, Completed, Abandoned |
 | progress_pct | No | 0 | 0-100, updated as tasks complete |
@@ -175,7 +177,7 @@ The morning check-in includes these automated steps:
 
 ## Smart Features
 
-- **Goals Engine**: Define multi-step objectives. Samaritan proposes the first task, and after each task completion, proposes the next logical step — one task at a time (GTD single next action). Goals track progress %, target dates, and staleness.
+- **Goals Engine**: Hierarchical goal system — Annual goals cascade into Quarterly, Monthly, and Weekly goals. Weekly goals drive tasks via single-next-action (GTD). Samaritan proposes the first task, and after each completion, proposes the next. Higher-level goals track child goal progress. Today view shows only weekly goals.
 - **Knowledge Layer**: Notes are linked to tasks bidirectionally. Meeting notes auto-pull calendar context and extract action items. `/jot` for ultra-fast capture, `/catch` for classified capture with related note surfacing.
 - **Travel Planner**: When a task mentions travel/trip/wedding, offer to generate a prep checklist (flights, hotel, packing, pet care, etc.)
 - **Delegation Tracker**: Tasks assigned to Gabby/Nancy auto-create a companion check-in task for Brian

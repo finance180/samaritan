@@ -298,6 +298,12 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 
 <!-- GOALS VIEW -->
 <div class="view" id="viewGoals">
+  <div class="note-filter-row" id="goalTypeFilter">
+    <div class="note-filter-btn" onclick="setGoalTypeFilter('annual',this)">ANNUAL</div>
+    <div class="note-filter-btn" onclick="setGoalTypeFilter('quarterly',this)">QUARTERLY</div>
+    <div class="note-filter-btn" onclick="setGoalTypeFilter('monthly',this)">MONTHLY</div>
+    <div class="note-filter-btn active" onclick="setGoalTypeFilter('weekly',this)">WEEKLY</div>
+  </div>
   <div class="content" id="goalsContent"><div class="loading">LOADING</div></div>
 </div>
 
@@ -578,7 +584,7 @@ async function loadDashboard(){
     q('tasks','status=eq.Active'),
     q('tasks','status=eq.Completed&completed_at=gte.'+t+'T00:00:00'),
     q('calendar_cache','event_date=eq.'+t+'&order=start_time'),
-    q('goals','status=eq.Active&order=target_date.asc.nullslast')
+    q('goals','status=eq.Active&goal_type=eq.weekly&order=target_date.asc.nullslast')
   ]);
 
   todayTasks=today_t;overdueTasks=overdue_t;cachedEvents=events;
@@ -1212,55 +1218,110 @@ async function deleteEvent(){
 
 // === GOALS ===
 let allGoalsCache=[];
+let currentGoalType='weekly';
 
-async function loadGoals(){
-  allGoalsCache=await q('goals','order=status.asc,target_date.asc.nullsfirst');
-  // For each goal, get linked task counts
-  const goalTasks={};
-  for(const g of allGoalsCache){
-    if(g.goal_id){
-      const tasks=await q('tasks','goal_id=eq.'+g.goal_id+'&select=task_id,title,status,priority,due_date');
-      goalTasks[g.goal_id]=tasks||[];
-    }
-  }
-  renderGoals(allGoalsCache,goalTasks);
+function setGoalTypeFilter(type,el){
+  currentGoalType=type;
+  el.parentElement.querySelectorAll('.note-filter-btn').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+  loadGoals();
 }
 
-function renderGoals(goals,goalTasks){
+async function loadGoals(){
+  // Fetch goals of the selected type
+  const goals=await q('goals','goal_type=eq.'+currentGoalType+'&order=status.asc,target_date.asc.nullsfirst');
+  allGoalsCache=goals;
+
+  // For weekly goals: fetch linked tasks. For others: fetch child goal counts.
+  const extra={};
+  if(currentGoalType==='weekly'){
+    const taskPromises=goals.map(g=>g.goal_id?q('tasks','goal_id=eq.'+g.goal_id+'&select=task_id,title,status,priority,due_date'):Promise.resolve([]));
+    const taskResults=await Promise.all(taskPromises);
+    goals.forEach((g,i)=>{extra[g.goal_id]={tasks:taskResults[i]||[]}});
+  } else {
+    // Map type to child type
+    const childType={annual:'quarterly',quarterly:'monthly',monthly:'weekly'}[currentGoalType];
+    if(childType){
+      const childPromises=goals.map(g=>g.goal_id?q('goals','parent_goal_id=eq.'+g.goal_id+'&select=goal_id,title,status,progress_pct,goal_type'):Promise.resolve([]));
+      const childResults=await Promise.all(childPromises);
+      goals.forEach((g,i)=>{extra[g.goal_id]={children:childResults[i]||[]}});
+    }
+  }
+  renderGoals(goals,extra);
+}
+
+function renderGoals(goals,extra){
   const container=document.getElementById('goalsContent');
-  if(!goals.length){container.innerHTML='<div class="empty">NO GOALS YET<br>Tell Samaritan your objectives to get started</div>';return}
+  const typeLabel=currentGoalType.toUpperCase();
+  if(!goals.length){container.innerHTML=`<div class="empty">NO ${typeLabel} GOALS YET<br>Tell Samaritan your ${currentGoalType} objectives</div>`;return}
   const active=goals.filter(g=>g.status==='Active');
   const other=goals.filter(g=>g.status!=='Active');
   let html='';
-  if(active.length)html+='<div class="section-header">ACTIVE GOALS</div>';
+
+  if(active.length)html+=`<div class="section-header">ACTIVE ${typeLabel} GOALS</div>`;
   active.forEach(g=>{
-    const tasks=goalTasks[g.goal_id]||[];
-    const completedCount=tasks.filter(t=>t.status==='Completed').length;
-    const activeTask=tasks.find(t=>t.status==='Active');
-    const target=g.target_date?new Date(g.target_date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',timeZone:'America/Chicago'}):'No target';
-    // Staleness: check if any task was completed recently
-    const isStale=tasks.length>0&&!activeTask;
-    html+=`<div class="goal-card${isStale?' stale':''}">
+    const data=extra[g.goal_id]||{};
+    const target=g.target_date?new Date(g.target_date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric',timeZone:'America/Chicago'}):'No target';
+    const parentRef=g.parent_goal_id?`<span>\u2191 ${g.parent_goal_id}</span>`:'';
+
+    // Weekly: show tasks. Others: show children.
+    let detailHtml='';
+    if(currentGoalType==='weekly'){
+      const tasks=data.tasks||[];
+      const completedCount=tasks.filter(t=>t.status==='Completed').length;
+      const activeTask=tasks.find(t=>t.status==='Active');
+      const isStale=tasks.length>0&&!activeTask;
+      detailHtml+=`<div class="goal-meta">
+        <span>${g.business}</span>
+        <span>${target}</span>
+        <span>${completedCount}/${tasks.length} tasks</span>
+        ${parentRef}
+        ${isStale?'<span style="color:var(--high)">\u26a0 NEEDS NEXT TASK</span>':''}
+      </div>`;
+      detailHtml+=`<div class="goal-progress"><div class="goal-progress-bar" style="width:${g.progress_pct}%"></div></div>`;
+      detailHtml+=`<div class="goal-meta" style="margin-top:4px"><span>${g.progress_pct}% complete</span></div>`;
+      if(activeTask)detailHtml+=`<div class="goal-next">\u25b6 Active: <strong>${activeTask.title}</strong>${activeTask.due_date?' \u2014 due '+new Date(activeTask.due_date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',timeZone:'America/Chicago'}):''}</div>`;
+      else if(g.next_task_hint)detailHtml+=`<div class="goal-next">\ud83d\udca1 Suggested next: ${g.next_task_hint}</div>`;
+    } else {
+      const children=data.children||[];
+      const activeChildren=children.filter(c=>c.status==='Active').length;
+      const avgProgress=children.length?Math.round(children.reduce((s,c)=>s+c.progress_pct,0)/children.length):0;
+      const childLabel={annual:'quarterly',quarterly:'monthly',monthly:'weekly'}[currentGoalType]||'sub';
+      detailHtml+=`<div class="goal-meta">
+        <span>${g.business}</span>
+        <span>${target}</span>
+        <span>${children.length} ${childLabel} goals</span>
+        <span>${activeChildren} active</span>
+        ${parentRef}
+      </div>`;
+      detailHtml+=`<div class="goal-progress"><div class="goal-progress-bar" style="width:${g.progress_pct||avgProgress}%"></div></div>`;
+      detailHtml+=`<div class="goal-meta" style="margin-top:4px"><span>${g.progress_pct||avgProgress}% complete</span></div>`;
+      // Show child goals as nested strips
+      if(children.length){
+        detailHtml+='<div style="margin-top:8px">';
+        children.forEach(c=>{
+          detailHtml+=`<div class="goal-strip" style="margin-left:0;border-left-color:${c.status==='Active'?'var(--red)':'var(--text-dim)'}" onclick="event.stopPropagation();setGoalTypeFilter('${childLabel}',document.querySelector('#goalTypeFilter .note-filter-btn:nth-child(${['annual','quarterly','monthly','weekly'].indexOf(childLabel)+1})'))">
+            <div class="goal-strip-title">${c.title}</div>
+            <div class="goal-strip-bar"><div class="goal-strip-bar-fill" style="width:${c.progress_pct}%"></div></div>
+            <div class="goal-strip-pct">${c.progress_pct}%</div>
+          </div>`;
+        });
+        detailHtml+='</div>';
+      }
+    }
+
+    html+=`<div class="goal-card">
       <div class="task-top">
         <div class="goal-title">${g.title}</div>
         <span class="task-priority Medium" style="background:var(--red-dim);color:var(--red)">${g.goal_id}</span>
       </div>
-      <div class="goal-meta">
-        <span>${g.business}</span>
-        <span>${target}</span>
-        <span>${g.review_cadence} review</span>
-        <span>${completedCount}/${tasks.length} tasks</span>
-        ${isStale?'<span style="color:var(--high)">&#9888; NEEDS NEXT TASK</span>':''}
-      </div>
-      <div class="goal-progress"><div class="goal-progress-bar" style="width:${g.progress_pct}%"></div></div>
-      <div class="goal-meta" style="margin-top:4px"><span>${g.progress_pct}% complete</span></div>
-      ${g.description?`<div style="font-size:12px;color:var(--text-dim);margin-top:6px">${g.description}</div>`:''}
-      ${activeTask?`<div class="goal-next">&#9654; Active: <strong>${activeTask.title}</strong>${activeTask.due_date?' — due '+new Date(activeTask.due_date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',timeZone:'America/Chicago'}):''}</div>`:''}
-      ${!activeTask&&g.next_task_hint?`<div class="goal-next">&#128161; Suggested next: ${g.next_task_hint}</div>`:''}
+      ${g.description?`<div style="font-size:12px;color:var(--text-dim);margin-top:4px">${g.description}</div>`:''}
+      ${detailHtml}
     </div>`;
   });
+
   if(other.length){
-    html+='<div class="section-header">COMPLETED / ON-HOLD</div>';
+    html+=`<div class="section-header">COMPLETED / ON-HOLD</div>`;
     other.forEach(g=>{
       html+=`<div class="goal-card" style="opacity:0.5">
         <div class="goal-title">${g.title}</div>
