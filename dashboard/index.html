@@ -169,6 +169,37 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 .note-tag{background:var(--border);color:var(--text-dim);padding:1px 6px;border-radius:2px;font-size:9px}
 .note-link{color:var(--medium);text-decoration:none;font-size:12px;word-break:break-all}
 .note-type-btn.active,.note-biz-btn.active{border-color:var(--red)!important;color:var(--red)!important}
+.note-card.type-meeting{border-left-color:#cc44cc}
+.note-source{font-family:'Share Tech Mono',monospace;font-size:8px;letter-spacing:1px;padding:1px 5px;border-radius:2px;background:var(--border);color:var(--text-dim)}
+.note-source.src-jot{background:#1a331a;color:var(--low)}
+.note-source.src-catch{background:#332200;color:var(--medium)}
+.note-source.src-meeting{background:#331133;color:#cc44cc}
+.note-linked{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--red);cursor:pointer}
+.note-filter-row{display:flex;gap:0;padding:0 20px;overflow-x:auto;-webkit-overflow-scrolling:touch;border-bottom:1px solid var(--border)}
+.note-filter-row::-webkit-scrollbar{display:none}
+.note-filter-btn{font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:1px;padding:6px 10px;color:var(--text-dim);cursor:pointer;border-bottom:2px solid transparent;transition:all .2s;white-space:nowrap}
+.note-filter-btn.active{color:var(--red-bright);border-bottom-color:var(--red-bright)}
+
+/* === GOALS === */
+.goal-card{background:var(--bg-card);border:1px solid var(--border);border-left:3px solid var(--red);border-radius:2px;padding:12px 14px;margin-bottom:6px}
+.goal-card.stale{border-left-color:var(--high)}
+.goal-title{font-size:15px;font-weight:600;color:var(--text-bright);line-height:1.3}
+.goal-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:5px;font-size:10px;color:var(--text-dim);font-family:'Share Tech Mono',monospace}
+.goal-progress{margin-top:8px;height:4px;background:var(--border);border-radius:2px;overflow:hidden}
+.goal-progress-bar{height:100%;background:var(--red);border-radius:2px;transition:width .3s}
+.goal-next{font-size:12px;color:var(--text);margin-top:6px;padding:6px 8px;background:rgba(196,30,30,0.05);border-left:2px solid var(--red-dim);border-radius:0 2px 2px 0}
+
+/* === GOAL BANNER (Today view) === */
+.goal-banner{margin-bottom:2px}
+.goal-strip{display:flex;align-items:center;gap:10px;padding:8px 14px;background:var(--bg-card);border:1px solid var(--border);border-left:3px solid var(--red);border-radius:2px;margin-bottom:4px;cursor:pointer;transition:background .15s;min-height:40px}
+.goal-strip:active{background:var(--bg-card-hover)}
+.goal-strip.stale{border-left-color:var(--high)}
+.goal-strip-title{font-size:13px;font-weight:600;color:var(--text-bright);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px;flex-shrink:0}
+.goal-strip-bar{flex:1;height:4px;background:var(--border);border-radius:2px;min-width:40px;overflow:hidden}
+.goal-strip-bar-fill{height:100%;background:var(--red);border-radius:2px;transition:width .3s}
+.goal-strip-pct{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--red);min-width:28px;text-align:right;flex-shrink:0}
+.goal-strip-next{font-size:11px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;flex-shrink:1}
+.goal-strip-stale{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--high);letter-spacing:1px;flex-shrink:0}
 
 /* === DROP ZONE === */
 .drop-zone{margin:0 20px 8px;border:2px dashed var(--border);border-radius:4px;padding:16px;text-align:center;transition:all .2s;cursor:pointer;min-height:44px}
@@ -250,11 +281,24 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
     <input class="search-input" id="noteSearchInput" placeholder="SEARCH NOTES..." oninput="filterNotes()" style="flex:1">
     <button class="task-btn" style="border-color:var(--red);color:var(--red);white-space:nowrap;padding:0 14px" onclick="showNoteModal()">+ NOTE</button>
   </div>
+  <div class="note-filter-row">
+    <div class="note-filter-btn active" onclick="setNoteFilter('type','all',this)">ALL</div>
+    <div class="note-filter-btn" onclick="setNoteFilter('type','text',this)">TEXT</div>
+    <div class="note-filter-btn" onclick="setNoteFilter('type','link',this)">LINK</div>
+    <div class="note-filter-btn" onclick="setNoteFilter('type','idea',this)">IDEA</div>
+    <div class="note-filter-btn" onclick="setNoteFilter('type','reference',this)">REF</div>
+    <div class="note-filter-btn" onclick="setNoteFilter('type','meeting',this)">MEETING</div>
+  </div>
   <div class="drop-zone" id="dropZone">
     <input type="file" id="fileInput" multiple style="display:none" onchange="handleFiles(this.files)">
     <div class="drop-zone-text" onclick="document.getElementById('fileInput').click()">DROP FILES HERE OR TAP TO UPLOAD</div>
   </div>
   <div class="content" id="notesContent"><div class="loading">LOADING</div></div>
+</div>
+
+<!-- GOALS VIEW -->
+<div class="view" id="viewGoals">
+  <div class="content" id="goalsContent"><div class="loading">LOADING</div></div>
 </div>
 
 <!-- ALL VIEW -->
@@ -285,7 +329,10 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
     <button class="task-btn note-type-btn" onclick="setNoteType('link',this)">LINK</button>
     <button class="task-btn note-type-btn" onclick="setNoteType('idea',this)">IDEA</button>
     <button class="task-btn note-type-btn" onclick="setNoteType('reference',this)">REF</button>
+    <button class="task-btn note-type-btn" onclick="setNoteType('meeting',this)">MEETING</button>
   </div>
+  <label>TAGS</label>
+  <input id="noteTags" placeholder="Comma-separated tags (e.g. compliance, hasbro)" style="width:100%;background:var(--bg-card);border:1px solid var(--red-dim);border-radius:4px;padding:12px;color:var(--text-bright);font-size:14px;font-family:'Rajdhani',sans-serif;outline:none;min-height:44px">
   <label>BUSINESS</label>
   <div style="display:flex;gap:8px;flex-wrap:wrap">
     <button class="task-btn note-biz-btn active" onclick="setNoteBiz('Personal',this)">PERSONAL</button>
@@ -322,7 +369,7 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
   <div class="nav-item" onclick="switchView('Calendar',this)"><span class="nav-icon">&#9638;</span>WEEK</div>
   <div class="nav-item" onclick="switchView('Email',this)"><span class="nav-icon">&#9993;</span>EMAIL</div>
   <div class="nav-item" onclick="switchView('Notes',this)"><span class="nav-icon">&#9998;</span>NOTES</div>
-  <div class="nav-item" onclick="switchView('All',this)"><span class="nav-icon">&#9776;</span>ALL</div>
+  <div class="nav-item" onclick="switchView('Goals',this)"><span class="nav-icon">&#9733;</span>GOALS</div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -414,6 +461,7 @@ function switchView(name,el){
   if(name==='Calendar')loadWeekView();
   if(name==='Email')loadEmailSuggestions();
   if(name==='Notes')loadNotes();
+  if(name==='Goals')loadGoals();
 }
 
 function filterBiz(biz,el){
@@ -450,7 +498,7 @@ async function postponeTask(taskId,el){
 // === QUICK ADD ===
 function navTo(view){
   const navItems=document.querySelectorAll('.nav-item');
-  const idx={Tasks:0,Calendar:1,Email:2,Notes:3,All:4}[view]||0;
+  const idx={Tasks:0,Calendar:1,Email:2,Notes:3,Goals:4}[view]||0;
   switchView(view,navItems[idx]);
 }
 
@@ -508,7 +556,7 @@ async function quickAddEvent(title){
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){hideAddModal();hideEditModal()}});
 
 // === DATA ===
-let todayTasks=[],overdueTasks=[],cachedEvents=[];
+let todayTasks=[],overdueTasks=[],cachedEvents=[],cachedGoalBanner=[];
 
 async function loadDashboard(){
   const now=new Date();
@@ -524,15 +572,27 @@ async function loadDashboard(){
   document.getElementById('lastSync').textContent='SYNCED '+now.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/Chicago'});
 
   // Parallel queries
-  const [today_t,overdue_t,all_t,done_t,events]=await Promise.all([
+  const [today_t,overdue_t,all_t,done_t,events,activeGoals]=await Promise.all([
     q('tasks','due_date=eq.'+t+'&status=eq.Active&order=priority'),
     q('tasks','due_date=lt.'+t+'&status=eq.Active&order=due_date'),
     q('tasks','status=eq.Active'),
     q('tasks','status=eq.Completed&completed_at=gte.'+t+'T00:00:00'),
-    q('calendar_cache','event_date=eq.'+t+'&order=start_time')
+    q('calendar_cache','event_date=eq.'+t+'&order=start_time'),
+    q('goals','status=eq.Active&order=target_date.asc.nullslast')
   ]);
 
   todayTasks=today_t;overdueTasks=overdue_t;cachedEvents=events;
+
+  // Fetch active task for each goal
+  cachedGoalBanner=[];
+  if(activeGoals.length){
+    const goalTaskPromises=activeGoals.map(g=>q('tasks','goal_id=eq.'+g.goal_id+'&status=eq.Active&limit=1'));
+    const goalTaskResults=await Promise.all(goalTaskPromises);
+    activeGoals.forEach((g,i)=>{
+      const at=goalTaskResults[i]&&goalTaskResults[i][0];
+      cachedGoalBanner.push({goal:g,activeTask:at||null});
+    });
+  }
 
   // Stats
   document.getElementById('statToday').textContent=today_t.length;
@@ -553,6 +613,23 @@ function renderTodayView(){
   const t=todayStr();
   const nowTime=new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'America/Chicago'});
   let html='';
+
+  // Goals banner
+  if(cachedGoalBanner.length){
+    html+='<div class="section-header">GOALS</div><div class="goal-banner">';
+    cachedGoalBanner.forEach(({goal:g,activeTask:at})=>{
+      const isStale=!at&&g.progress_pct<100;
+      const nextText=at?'\u25b8 '+at.title:(g.next_task_hint?'\u25b8 '+g.next_task_hint:'');
+      html+=`<div class="goal-strip${isStale?' stale':''}" onclick="navTo('Goals')">
+        <div class="goal-strip-title">${g.title}</div>
+        <div class="goal-strip-bar"><div class="goal-strip-bar-fill" style="width:${g.progress_pct}%"></div></div>
+        <div class="goal-strip-pct">${g.progress_pct}%</div>
+        ${isStale?'<div class="goal-strip-stale">\u26a0 STALE</div>':''}
+        ${nextText?`<div class="goal-strip-next">${nextText}</div>`:''}
+      </div>`;
+    });
+    html+='</div>';
+  }
 
   // Calendar events from cache
   const events=cachedEvents;
@@ -796,17 +873,24 @@ let allNotesCache=[];
 let editingNoteId=null;
 let noteType='text';
 let noteBiz='Personal';
+let noteTypeFilter='all';
 
 function setNoteType(t,el){noteType=t;document.querySelectorAll('.note-type-btn').forEach(b=>b.classList.remove('active'));el.classList.add('active')}
 function setNoteBiz(b,el){noteBiz=b;document.querySelectorAll('.note-biz-btn').forEach(btn=>btn.classList.remove('active'));el.classList.add('active')}
+function setNoteFilter(kind,val,el){
+  if(kind==='type'){noteTypeFilter=val;el.parentElement.querySelectorAll('.note-filter-btn').forEach(b=>b.classList.remove('active'));el.classList.add('active')}
+  filterNotes();
+}
 
 function showNoteModal(note){
   editingNoteId=note?note.id:null;
   document.getElementById('noteTitle').value=note?note.title:'';
   document.getElementById('noteContent').value=note?note.content:'';
+  document.getElementById('noteTags').value=note&&note.tags?(note.tags.join(', ')):'';
   noteType=note?note.type:'text';
   noteBiz=note?note.business:'Personal';
-  document.querySelectorAll('.note-type-btn').forEach(b=>{b.classList.toggle('active',b.textContent===(noteType==='reference'?'REF':noteType).toUpperCase())});
+  const typeMap={text:'TEXT',link:'LINK',idea:'IDEA',reference:'REF',meeting:'MEETING'};
+  document.querySelectorAll('.note-type-btn').forEach(b=>{b.classList.toggle('active',b.textContent===(typeMap[noteType]||noteType.toUpperCase()))});
   document.querySelectorAll('.note-biz-btn').forEach(b=>{
     const map={'PERSONAL':'Personal','HPM':'Happy Pup Manor','RESELLER':'Reseller Business'};
     b.classList.toggle('active',map[b.textContent]===noteBiz);
@@ -822,15 +906,17 @@ async function saveNote(){
   const title=document.getElementById('noteTitle').value.trim();
   const content=document.getElementById('noteContent').value.trim();
   if(!content&&!title)return;
-  // Auto-detect links
   const urlMatch=content.match(/https?:\/\/[^\s]+/);
   const url=urlMatch?urlMatch[0]:'';
   const finalType=url&&noteType==='text'?'link':noteType;
-  const data={title:title||content.substring(0,60),content:content,type:finalType,url:url,business:noteBiz};
+  const tagsRaw=document.getElementById('noteTags').value.trim();
+  const tags=tagsRaw?tagsRaw.split(',').map(t=>t.trim()).filter(Boolean):[];
+  const data={title:title||content.substring(0,60),content:content,type:finalType,url:url,business:noteBiz,tags:tags.length?tags:null};
   if(editingNoteId){
     data.updated_at=new Date().toISOString();
     await patch('notes','id=eq.'+editingNoteId,data);
   } else {
+    data.source='manual';
     await insert('notes',data);
   }
   hideNoteModal();
@@ -851,7 +937,9 @@ async function loadNotes(){
 
 function filterNotes(){
   const term=document.getElementById('noteSearchInput').value.toLowerCase();
-  const filtered=term?allNotesCache.filter(n=>n.title.toLowerCase().includes(term)||n.content.toLowerCase().includes(term)||(n.tags||[]).some(t=>t.toLowerCase().includes(term))):allNotesCache;
+  let filtered=allNotesCache;
+  if(noteTypeFilter!=='all')filtered=filtered.filter(n=>n.type===noteTypeFilter);
+  if(term)filtered=filtered.filter(n=>n.title.toLowerCase().includes(term)||n.content.toLowerCase().includes(term)||(n.tags||[]).some(t=>t.toLowerCase().includes(term)));
   renderNotes(filtered);
 }
 
@@ -859,21 +947,32 @@ function renderNotes(notes){
   const container=document.getElementById('notesContent');
   if(!notes.length){container.innerHTML='<div class="empty">NO NOTES YET<br>Tap + NOTE to capture something</div>';return}
   let html='';
-  notes.forEach(n=>{
-    const date=new Date(n.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',timeZone:'America/Chicago'});
-    const tags=(n.tags||[]).map(t=>`<span class="note-tag">${t}</span>`).join('');
-    const preview=n.type==='link'&&n.url?`<a class="note-link" href="${n.url}" target="_blank" onclick="event.stopPropagation()">${n.url}</a>`:`<div class="note-preview">${n.content.replace(/</g,'&lt;')}</div>`;
-    html+=`<div class="note-card type-${n.type}${n.pinned?' pinned':''}" onclick='showNoteModal(${JSON.stringify(n).replace(/'/g,"&#39;")})'>
-      ${n.title?`<div class="note-title">${n.title}</div>`:''}
-      ${preview}
-      <div class="note-meta">
-        <span>${n.note_id}</span>
-        <span>${n.type.toUpperCase()}</span>
-        <span>${n.business}</span>
-        <span>${date}</span>
-        ${tags}
-      </div>
-    </div>`;
+  // Pinned first
+  const pinned=notes.filter(n=>n.pinned);
+  const unpinned=notes.filter(n=>!n.pinned);
+  if(pinned.length)html+='<div class="section-header">PINNED</div>';
+  [pinned,unpinned].forEach((group,gi)=>{
+    if(gi===1&&pinned.length&&unpinned.length)html+='<div class="section-header">ALL NOTES</div>';
+    group.forEach(n=>{
+      const date=new Date(n.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',timeZone:'America/Chicago'});
+      const tags=(n.tags||[]).map(t=>`<span class="note-tag">${t}</span>`).join('');
+      const preview=n.type==='link'&&n.url?`<a class="note-link" href="${n.url}" target="_blank" onclick="event.stopPropagation()">${n.url}</a>`:`<div class="note-preview">${n.content.replace(/</g,'&lt;')}</div>`;
+      const src=n.source&&n.source!=='manual'?`<span class="note-source src-${n.source}">${n.source.toUpperCase()}</span>`:'';
+      const linked=(n.linked_task_ids&&n.linked_task_ids.length)?`<span class="note-linked">&#128206;${n.linked_task_ids.length}</span>`:'';
+      html+=`<div class="note-card type-${n.type}${n.pinned?' pinned':''}" onclick='showNoteModal(${JSON.stringify(n).replace(/'/g,"&#39;")})'>
+        ${n.title?`<div class="note-title">${n.title}</div>`:''}
+        ${preview}
+        <div class="note-meta">
+          <span>${n.note_id||''}</span>
+          <span>${n.type.toUpperCase()}</span>
+          ${src}
+          <span>${n.business}</span>
+          <span>${date}</span>
+          ${linked}
+          ${tags}
+        </div>
+      </div>`;
+    });
   });
   container.innerHTML=html;
 }
@@ -1100,6 +1199,67 @@ async function deleteEvent(){
   }catch(e){}
   hideEditModal();
   loadDashboard();
+}
+
+// === GOALS ===
+let allGoalsCache=[];
+
+async function loadGoals(){
+  allGoalsCache=await q('goals','order=status.asc,target_date.asc.nullsfirst');
+  // For each goal, get linked task counts
+  const goalTasks={};
+  for(const g of allGoalsCache){
+    if(g.goal_id){
+      const tasks=await q('tasks','goal_id=eq.'+g.goal_id+'&select=task_id,title,status,priority,due_date');
+      goalTasks[g.goal_id]=tasks||[];
+    }
+  }
+  renderGoals(allGoalsCache,goalTasks);
+}
+
+function renderGoals(goals,goalTasks){
+  const container=document.getElementById('goalsContent');
+  if(!goals.length){container.innerHTML='<div class="empty">NO GOALS YET<br>Tell Samaritan your objectives to get started</div>';return}
+  const active=goals.filter(g=>g.status==='Active');
+  const other=goals.filter(g=>g.status!=='Active');
+  let html='';
+  if(active.length)html+='<div class="section-header">ACTIVE GOALS</div>';
+  active.forEach(g=>{
+    const tasks=goalTasks[g.goal_id]||[];
+    const completedCount=tasks.filter(t=>t.status==='Completed').length;
+    const activeTask=tasks.find(t=>t.status==='Active');
+    const target=g.target_date?new Date(g.target_date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',timeZone:'America/Chicago'}):'No target';
+    // Staleness: check if any task was completed recently
+    const isStale=tasks.length>0&&!activeTask;
+    html+=`<div class="goal-card${isStale?' stale':''}">
+      <div class="task-top">
+        <div class="goal-title">${g.title}</div>
+        <span class="task-priority Medium" style="background:var(--red-dim);color:var(--red)">${g.goal_id}</span>
+      </div>
+      <div class="goal-meta">
+        <span>${g.business}</span>
+        <span>${target}</span>
+        <span>${g.review_cadence} review</span>
+        <span>${completedCount}/${tasks.length} tasks</span>
+        ${isStale?'<span style="color:var(--high)">&#9888; NEEDS NEXT TASK</span>':''}
+      </div>
+      <div class="goal-progress"><div class="goal-progress-bar" style="width:${g.progress_pct}%"></div></div>
+      <div class="goal-meta" style="margin-top:4px"><span>${g.progress_pct}% complete</span></div>
+      ${g.description?`<div style="font-size:12px;color:var(--text-dim);margin-top:6px">${g.description}</div>`:''}
+      ${activeTask?`<div class="goal-next">&#9654; Active: <strong>${activeTask.title}</strong>${activeTask.due_date?' — due '+new Date(activeTask.due_date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',timeZone:'America/Chicago'}):''}</div>`:''}
+      ${!activeTask&&g.next_task_hint?`<div class="goal-next">&#128161; Suggested next: ${g.next_task_hint}</div>`:''}
+    </div>`;
+  });
+  if(other.length){
+    html+='<div class="section-header">COMPLETED / ON-HOLD</div>';
+    other.forEach(g=>{
+      html+=`<div class="goal-card" style="opacity:0.5">
+        <div class="goal-title">${g.title}</div>
+        <div class="goal-meta"><span>${g.status}</span><span>${g.business}</span><span>${g.progress_pct}%</span></div>
+      </div>`;
+    });
+  }
+  container.innerHTML=html;
 }
 
 // Init

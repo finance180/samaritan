@@ -85,7 +85,38 @@ curl -sL -X DELETE "${SUPABASE_URL}/rest/v1/tasks?task_id=eq.T-001" "${HEADERS[@
 | assigned_to | No | Brian | Person responsible |
 | notes | No | — | Additional context |
 | recurrence | No | None | None, Daily, Weekdays, Weekly, Biweekly, Monthly, or custom |
+| goal_id | No | — | Links task to a goal (G-001, G-002, etc.) |
 | task_id | Auto | — | Auto-generated T-001, T-002, etc. |
+
+### Goal Fields (DB columns)
+
+| Field | Required | Default | Notes |
+|-------|----------|---------|-------|
+| title | Yes | — | Concise goal name |
+| description | No | '' | What success looks like |
+| business | No | Personal | Happy Pup Manor, Reseller Business, or Personal |
+| target_date | No | — | YYYY-MM-DD format |
+| status | No | Active | Active, On-Hold, Completed, Abandoned |
+| progress_pct | No | 0 | 0-100, updated as tasks complete |
+| next_task_hint | No | — | AI-suggested next action |
+| review_cadence | No | Weekly | Weekly, Biweekly, or Monthly |
+| goal_id | Auto | — | Auto-generated G-001, G-002, etc. |
+
+### Note Fields (DB columns)
+
+| Field | Required | Default | Notes |
+|-------|----------|---------|-------|
+| title | No | '' | Note title |
+| content | No | '' | Full body text |
+| type | No | text | text, link, idea, reference, or meeting |
+| url | No | — | URL if link type |
+| business | No | Personal | Happy Pup Manor, Reseller Business, or Personal |
+| tags | No | — | JSON array of strings |
+| pinned | No | false | Pin to top of notes view |
+| source | No | manual | Origin: manual, meeting, email, catch, jot |
+| context | No | {} | JSONB metadata (meeting details, email thread, etc.) |
+| linked_task_ids | No | {} | Array of task IDs linked to this note |
+| note_id | Auto | — | Auto-generated N-001, N-002, etc. |
 
 ## Priority Inference
 
@@ -110,13 +141,14 @@ curl -sL -X DELETE "${SUPABASE_URL}/rest/v1/tasks?task_id=eq.T-001" "${HEADERS[@
 
 ## Agents
 
-Four specialized agents are available in `.claude/agents/`:
+Five specialized agents are available in `.claude/agents/`:
 
 | Agent | When to Use |
 |-------|-------------|
-| `task-manager` | Adding, completing, updating, querying tasks; managing projects |
+| `task-manager` | Adding, completing, updating, querying tasks; managing projects; creating and tracking goals |
 | `calendar-assistant` | Reading schedule, creating events, finding free time, managing check-in reminders |
 | `email-assistant` | Scanning inbox, reading emails, creating drafts, linking emails to tasks |
+| `notes-assistant` | Creating notes, meeting notes, linking notes to tasks, extracting action items, searching knowledge |
 | `daily-briefing` | Morning/midday/evening check-ins, weekly reviews, processing recurring tasks |
 
 ## Daily Check-ins
@@ -135,15 +167,19 @@ The morning check-in includes these automated steps:
 2. **Recurring Task Processing** — cycle any overdue recurring tasks
 3. **Priority Auto-Escalation** — Medium tasks due within 2 days auto-bump to High
 4. **Email-to-Task Pipeline** — scan unread inbox, suggest actionable tasks (never auto-add)
-5. **Follow-up Detection** — flag sent emails with no reply after 3+ days
-6. **Today's Tasks** — grouped by business with priority indicators
-7. **Today's Calendar** — events from Google Calendar
+5. **Notes to Revisit** — orphaned ideas (7+ days, no linked tasks), recent meeting notes, notes linked to today's tasks
+6. **Active Goals** — progress %, staleness indicators, next suggested task per goal
+7. **Follow-up Detection** — flag sent emails with no reply after 3+ days
+8. **Today's Tasks** — grouped by business with priority indicators and linked note counts
+9. **Today's Calendar** — events from Google Calendar
 
 ## Smart Features
 
+- **Goals Engine**: Define multi-step objectives. Samaritan proposes the first task, and after each task completion, proposes the next logical step — one task at a time (GTD single next action). Goals track progress %, target dates, and staleness.
+- **Knowledge Layer**: Notes are linked to tasks bidirectionally. Meeting notes auto-pull calendar context and extract action items. `/jot` for ultra-fast capture, `/catch` for classified capture with related note surfacing.
 - **Travel Planner**: When a task mentions travel/trip/wedding, offer to generate a prep checklist (flights, hotel, packing, pet care, etc.)
 - **Delegation Tracker**: Tasks assigned to Gabby/Nancy auto-create a companion check-in task for Brian
 - **Seasonal Tasks**: Support yearly-month recurrence ("every October" → `Yearly-October`)
 - **Availability Responder**: "When am I free?" produces paste-ready availability blocks
-- **Weekly Review**: Sunday 6pm automated summary of completed, overdue, and upcoming tasks
+- **Weekly Review**: Sunday 6pm automated summary of completed, overdue, and upcoming tasks with goal progress deltas
 - **Soft-Delete**: Completed tasks are marked `status=Completed` with `completed_at` timestamp (not deleted) for weekly review tracking

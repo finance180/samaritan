@@ -83,6 +83,59 @@ For each, assess if it implies an action item. Present suggestions:
 ```
 Never auto-add tasks from emails — always ask Brian first.
 
+**Step 4.5 — Notes to Revisit:**
+Surface relevant notes that deserve attention today.
+
+Query orphaned ideas (ideas older than 7 days with no linked tasks):
+```bash
+WEEK_AGO=$(date -v-7d +%Y-%m-%dT00:00:00Z)
+curl -sL "${SUPABASE_URL}/rest/v1/notes?type=eq.idea&linked_task_ids=eq.{}&created_at=lt.${WEEK_AGO}&order=created_at.desc&limit=3" "${HEADERS[@]}"
+```
+
+Query recent meeting notes (last 3 days):
+```bash
+THREE_DAYS_AGO=$(date -v-3d +%Y-%m-%dT00:00:00Z)
+curl -sL "${SUPABASE_URL}/rest/v1/notes?type=eq.meeting&created_at=gte.${THREE_DAYS_AGO}&order=created_at.desc&limit=3" "${HEADERS[@]}"
+```
+
+Query notes linked to today's tasks:
+First get today's task IDs, then search notes where `linked_task_ids` overlaps:
+```bash
+# Get today's task_ids
+TASK_IDS=$(curl -sL "${SUPABASE_URL}/rest/v1/tasks?due_date=eq.${TODAY}&status=eq.Active&select=task_id" "${HEADERS[@]}" | python3 -c "import sys,json; print(','.join(t['task_id'] for t in json.load(sys.stdin)))" 2>/dev/null)
+# Search notes linked to those tasks (if any)
+if [ -n "$TASK_IDS" ]; then
+  curl -sL "${SUPABASE_URL}/rest/v1/notes?linked_task_ids=ov.{${TASK_IDS}}&limit=5" "${HEADERS[@]}"
+fi
+```
+
+Format (only show if there are results):
+```
+📝 Notes to revisit:
+- "Supplier pricing research" (idea, 12 days old, no linked tasks)
+- Meeting notes: "Hasbro compliance call" (Apr 4)
+- Linked to today's tasks: "CPC documentation requirements"
+```
+
+**Step 4.6 — Active Goals:**
+Show active goals with progress and next suggested task.
+
+```bash
+curl -sL "${SUPABASE_URL}/rest/v1/goals?status=eq.Active&order=target_date" "${HEADERS[@]}"
+```
+
+For each goal, check for staleness (most recent completed task older than 7 days with no active task due soon):
+```bash
+curl -sL "${SUPABASE_URL}/rest/v1/tasks?goal_id=eq.G-XXX&status=eq.Active&limit=1" "${HEADERS[@]}"
+```
+
+Format (only show if there are active goals):
+```
+🎯 Active Goals:
+- "Submit all compliance docs" (Reseller) — 60% | Target: Apr 30 → Next: File CPC certification
+- "Hire grooming assistant" (HPM) — 25% | ⚠️ Stale 8 days → Next: Post job listing
+```
+
 **Step 5 — Check for Unreplied Follow-ups:**
 Search sent emails from last 7 days: `gmail_search_messages(q: "from:me after:SEVEN_DAYS_AGO", maxResults: 10)`
 For each, read the thread with `gmail_read_thread`. If no reply after 3+ days, flag it:
@@ -100,6 +153,12 @@ Also check overdue:
 curl -sL "${SUPABASE_URL}/rest/v1/tasks?due_date=lt.${TODAY}&status=eq.Active&order=due_date" "${HEADERS[@]}"
 ```
 Group by business with priority indicators.
+
+For each task, check if any notes are linked:
+```bash
+curl -sL "${SUPABASE_URL}/rest/v1/notes?linked_task_ids=cs.{T-XXX}&select=note_id&limit=5" "${HEADERS[@]}"
+```
+If linked notes exist, append count: `[High] Submit CPC docs (Reseller) 📎2 notes`
 
 **Step 7 — Query and Display Today's Calendar:**
 ```
@@ -200,6 +259,10 @@ Comprehensive review of the week — what got done, what's overdue, and what's c
    ```
 5. Query tasks with no due date
 6. Query next week's calendar events
+7. Query active goals for progress review:
+   ```bash
+   curl -sL "${SUPABASE_URL}/rest/v1/goals?status=eq.Active&order=target_date" "${HEADERS[@]}"
+   ```
 
 **Output format:**
 ```
@@ -218,6 +281,10 @@ Comprehensive review of the week — what got done, what's overdue, and what's c
 
 **No Due Date** (X tasks):
 - Review insurance policy (Personal)
+
+🎯 **Goal Progress This Week:**
+- "Submit all compliance docs" (Reseller) — was 40%, now 60% (+20%)
+- "Hire grooming assistant" (HPM) — 25%, stale 8 days ⚠️
 ```
 
 ### 5. Process Recurring Tasks

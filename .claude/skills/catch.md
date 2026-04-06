@@ -59,7 +59,7 @@ curl -sL "${SUPABASE_URL}/rest/v1/tasks" "${HEADERS[@]}" \
 ```bash
 curl -sL "${SUPABASE_URL}/rest/v1/notes" "${HEADERS[@]}" \
   -H "Content-Type: application/json" -H "Prefer: return=representation" \
-  -d '{"title":"...","content":"...","type":"text|link|idea|reference","url":"...","business":"..."}'
+  -d '{"title":"...","content":"...","type":"text|link|idea|reference","url":"...","business":"...","source":"catch","tags":[...]}'
 ```
 
 ### Calendar Event
@@ -116,6 +116,14 @@ Brief confirmation with what was stored and where:
 - "Caught — created task: 'Follow up with supplier', due tomorrow"
 - "Caught — OCR'd the receipt. Saved as reference note. Total: $45.99"
 - "Caught — added 'Lunch with Mom' to calendar, tomorrow at noon"
+
+## Related Notes
+
+After storing a note (any type), check for related notes:
+```bash
+curl -sL "${SUPABASE_URL}/rest/v1/notes?or=(tags.ov.{TAG1,TAG2},business=eq.BUSINESS)&order=updated_at.desc&limit=3" "${HEADERS[@]}"
+```
+If related notes exist, append to the confirmation: "Related: X existing notes tagged [tag]"
 
 ## Multiple Items
 
