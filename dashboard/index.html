@@ -1464,67 +1464,121 @@ function renderGoalCard(g,depth,startIdx,levels){
   return html;
 }
 
-// === COACH CHAT ===
+// === COACH — GROW Model Guided Flow ===
+const COACH_STEPS=[
+  {id:'goal',     q:"What's the goal? Describe what you want to achieve in one sentence.",                          placeholder:"e.g. Grow reseller revenue 30% this year"},
+  {id:'success',  q:"What does success look like? How will you know you've achieved it?",                           placeholder:"e.g. Revenue hits $X/month by December"},
+  {id:'why',      q:"Why does this matter to you right now? What's driving this?",                                  placeholder:"e.g. Financial freedom, scaling the business"},
+  {id:'reality',  q:"Where are you today? What's already in place and what's the biggest gap?",                     placeholder:"e.g. Currently at $X/month, need better sourcing"},
+  {id:'obstacle', q:"What's the #1 obstacle standing in the way?",                                                 placeholder:"e.g. Not enough time for product research"},
+  {id:'type',     q:"What timeframe fits this goal?",                                                               placeholder:"Pick one", options:['Annual','Quarterly','Monthly','Weekly']},
+  {id:'target',   q:"What's your target date? When do you want this done by?",                                      placeholder:"YYYY-MM-DD", inputType:'date'},
+  {id:'business', q:"Which area of your life does this belong to?",                                                 placeholder:"Pick one", options:['Personal','Happy Pup Manor','Reseller Business']},
+  {id:'breakdown',q:"Let's break it down. What are 2-4 smaller milestones that would get you there?",               placeholder:"e.g. 1) Fix sourcing pipeline  2) Launch 3 new brands  3) Optimize PPC"},
+  {id:'first',    q:"What's the very first concrete action you can take this week?",                                placeholder:"e.g. Research 5 new suppliers on Wednesday"},
+];
+
+let coachStep=0;
+let coachAnswers={};
 let coachMessages=[];
-let coachBusy=false;
 
 function openCoach(){
   document.getElementById('coachModal').classList.add('show');
   if(!coachMessages.length){
-    // Opening greeting
-    const greeting="Hey Brian. What goal are you working on, or want to work through? I can help you break it down, sharpen it, or figure out the next move.";
-    coachMessages.push({role:'assistant',content:greeting});
-    renderCoachMessages();
+    coachStep=0;coachAnswers={};
+    coachMessages.push({role:'assistant',content:"Let's build a goal together. I'll walk you through 10 quick questions \u2014 GROW framework style."});
+    askCoachStep();
   }
-  document.getElementById('coachInput').focus();
+  setTimeout(()=>document.getElementById('coachInput').focus(),100);
+}
+function closeCoach(){document.getElementById('coachModal').classList.remove('show')}
+
+function askCoachStep(){
+  if(coachStep>=COACH_STEPS.length){finishCoach();return}
+  const s=COACH_STEPS[coachStep];
+  let msg=`<strong>Step ${coachStep+1}/10:</strong> ${s.q}`;
+  if(s.options){
+    msg+='<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">'+s.options.map(o=>`<button class="task-btn" style="border-color:var(--red);color:var(--red);padding:6px 12px;font-size:12px" onclick="coachOptionPick('${o}')">${o.toUpperCase()}</button>`).join('')+'</div>';
+  }
+  coachMessages.push({role:'assistant',content:msg});
+  renderCoachMessages();
+  const input=document.getElementById('coachInput');
+  input.placeholder=s.placeholder||'';
+  if(s.inputType==='date')input.type='date'; else input.type='text';
+  if(s.options)input.style.display='none'; else{input.style.display='';input.focus()}
 }
 
-function closeCoach(){document.getElementById('coachModal').classList.remove('show')}
+function coachOptionPick(val){
+  const s=COACH_STEPS[coachStep];
+  coachAnswers[s.id]=val;
+  coachMessages.push({role:'user',content:val});
+  coachStep++;
+  document.getElementById('coachInput').style.display='';
+  askCoachStep();
+}
+
+function sendCoachMsg(){
+  const input=document.getElementById('coachInput');
+  const text=input.value.trim();
+  if(!text||coachStep>=COACH_STEPS.length)return;
+  input.value='';
+  input.type='text';
+  const s=COACH_STEPS[coachStep];
+  coachAnswers[s.id]=text;
+  coachMessages.push({role:'user',content:text});
+  coachStep++;
+  askCoachStep();
+}
+
+async function finishCoach(){
+  const a=coachAnswers;
+  const typeMap={Annual:'annual',Quarterly:'quarterly',Monthly:'monthly',Weekly:'weekly'};
+  const goalType=typeMap[a.type]||'weekly';
+
+  // Create the goal
+  const goalData={
+    title:a.goal,
+    description:`**Success:** ${a.success||''}\n**Why:** ${a.why||''}\n**Reality:** ${a.reality||''}\n**Obstacle:** ${a.obstacle||''}`,
+    goal_type:goalType,
+    business:a.business||'Personal',
+    target_date:a.target||null
+  };
+  const goalRes=await insert('goals',goalData);
+  const goalId=goalRes&&goalRes[0]?goalRes[0].goal_id:null;
+
+  let summary=`\u2705 <strong>Goal created${goalId?' ('+goalId+')':''}:</strong> ${a.goal}`;
+  summary+=`<br><strong>Type:</strong> ${a.type} | <strong>Business:</strong> ${a.business} | <strong>Target:</strong> ${a.target||'none'}`;
+
+  // Create milestones as sub-goals if breakdown provided
+  if(a.breakdown){
+    const childType={annual:'quarterly',quarterly:'monthly',monthly:'weekly',weekly:'weekly'}[goalType];
+    const milestones=a.breakdown.split(/\n|(?:\d+[\.\)]\s*)/).map(s=>s.trim()).filter(Boolean);
+    if(milestones.length&&goalId){
+      summary+=`<br><br><strong>Milestones (${childType}):</strong>`;
+      for(const m of milestones){
+        await insert('goals',{title:m,goal_type:childType,business:a.business||'Personal',parent_goal_id:goalId});
+        summary+=`<br>\u2022 ${m}`;
+      }
+    }
+  }
+
+  // Create first task if provided
+  if(a.first&&goalId){
+    await insert('tasks',{title:a.first,business:a.business||'Personal',goal_id:goalId,priority:'High'});
+    summary+=`<br><br><strong>First task:</strong> ${a.first}`;
+  }
+
+  summary+='<br><br>Nice work. Close this and check your goals tab.';
+  coachMessages.push({role:'assistant',content:summary});
+  renderCoachMessages();
+  // Refresh goals in background
+  loadGoals();
+}
 
 function renderCoachMessages(){
   const container=document.getElementById('coachMessages');
-  container.innerHTML=coachMessages.map(m=>`<div class="coach-msg ${m.role}">${m.content.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/\n/g,'<br>')}</div>`).join('');
+  container.innerHTML=coachMessages.map(m=>`<div class="coach-msg ${m.role}">${m.content}</div>`).join('');
   container.scrollTop=container.scrollHeight;
-}
-
-async function sendCoachMsg(){
-  if(coachBusy)return;
-  const input=document.getElementById('coachInput');
-  const text=input.value.trim();
-  if(!text)return;
-  input.value='';
-
-  coachMessages.push({role:'user',content:text});
-  coachMessages.push({role:'assistant',content:'Thinking...'});
-  renderCoachMessages();
-  coachBusy=true;
-
-  try{
-    // Build goal context from current view if available
-    let goalContext=null;
-    if(allGoalsFlat.length){
-      const active=allGoalsFlat.filter(g=>g.status==='Active');
-      if(active.length===1)goalContext=active[0];
-    }
-
-    const res=await fetch(SB_URL+'/functions/v1/goal-coach',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        messages:coachMessages.filter(m=>m.content!=='Thinking...').map(m=>({role:m.role,content:m.content})),
-        goalContext:goalContext
-      })
-    });
-    const data=await res.json();
-    // Replace thinking message with actual reply
-    coachMessages.pop();
-    coachMessages.push({role:'assistant',content:data.reply||data.error||'Something went wrong.'});
-  }catch(e){
-    coachMessages.pop();
-    coachMessages.push({role:'assistant',content:'Connection error. Try again.'});
-  }
-  coachBusy=false;
-  renderCoachMessages();
 }
 
 // Init
