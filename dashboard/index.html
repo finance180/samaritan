@@ -344,9 +344,17 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
     <button class="task-btn note-biz-btn" onclick="setGoalFormBiz('Happy Pup Manor',this)">HPM</button>
     <button class="task-btn note-biz-btn" onclick="setGoalFormBiz('Reseller Business',this)">RESELLER</button>
   </div>
+  <label id="goalStatusLabel" style="display:none">STATUS</label>
+  <div id="goalStatusRow" style="display:none;flex-wrap:wrap;gap:8px">
+    <button class="task-btn goal-status-btn active" onclick="setGoalFormStatus('Active',this)">ACTIVE</button>
+    <button class="task-btn goal-status-btn" onclick="setGoalFormStatus('On-Hold',this)">ON-HOLD</button>
+    <button class="task-btn goal-status-btn" onclick="setGoalFormStatus('Completed',this)">COMPLETED</button>
+    <button class="task-btn goal-status-btn" onclick="setGoalFormStatus('Abandoned',this)">ABANDONED</button>
+  </div>
   <div class="edit-modal-btns">
+    <button class="delete" id="goalDeleteBtn" style="display:none" onclick="deleteGoal()">DELETE</button>
     <button class="cancel" onclick="hideGoalModal()">CANCEL</button>
-    <button class="save" onclick="saveGoal()">CREATE GOAL</button>
+    <button class="save" id="goalSaveBtn" onclick="saveGoal()">CREATE GOAL</button>
   </div>
 </div>
 
@@ -549,21 +557,39 @@ function hideAddModal(){document.getElementById('addModal').classList.remove('sh
 // Goal modal
 let goalFormType='weekly';
 let goalFormBiz='Personal';
+let goalFormStatus='Active';
+let editingGoalId=null;
 function setGoalFormType(t,el){goalFormType=t;el.parentElement.querySelectorAll('.note-type-btn').forEach(b=>b.classList.remove('active'));el.classList.add('active')}
 function setGoalFormBiz(b,el){goalFormBiz=b;el.parentElement.querySelectorAll('.note-biz-btn').forEach(b=>b.classList.remove('active'));el.classList.add('active')}
-function showGoalModal(){
-  document.getElementById('goalTitle').value='';
-  document.getElementById('goalDesc').value='';
-  document.getElementById('goalTargetDate').value='';
-  goalFormType=currentGoalType||'weekly';
-  goalFormBiz='Personal';
-  // Sync type buttons to current filter
+function setGoalFormStatus(s,el){goalFormStatus=s;el.parentElement.querySelectorAll('.goal-status-btn').forEach(b=>b.classList.remove('active'));el.classList.add('active')}
+
+function showGoalModal(goal){
+  editingGoalId=goal?goal.goal_id:null;
+  const isEdit=!!goal;
+  document.getElementById('goalTitle').value=goal?goal.title:'';
+  document.getElementById('goalDesc').value=goal?goal.description||'':'';
+  document.getElementById('goalTargetDate').value=goal?goal.target_date||'':'';
+  goalFormType=goal?goal.goal_type:(currentGoalType||'weekly');
+  goalFormBiz=goal?goal.business:'Personal';
+  goalFormStatus=goal?goal.status:'Active';
+  // Sync type buttons
   document.querySelectorAll('#goalModal .note-type-btn').forEach(b=>{b.classList.toggle('active',b.textContent===goalFormType.toUpperCase())});
-  document.querySelectorAll('#goalModal .note-biz-btn').forEach(b=>{b.classList.toggle('active',b.textContent==='PERSONAL')});
+  // Sync biz buttons
+  const bizMap={'Personal':'PERSONAL','Happy Pup Manor':'HPM','Reseller Business':'RESELLER'};
+  document.querySelectorAll('#goalModal .note-biz-btn').forEach(b=>{b.classList.toggle('active',b.textContent===(bizMap[goalFormBiz]||'PERSONAL'))});
+  // Sync status buttons
+  document.querySelectorAll('#goalModal .goal-status-btn').forEach(b=>{b.classList.toggle('active',b.textContent===goalFormStatus.toUpperCase().replace('-',''))});
+  // Show/hide edit-only elements
+  document.getElementById('goalStatusLabel').style.display=isEdit?'block':'none';
+  document.getElementById('goalStatusRow').style.display=isEdit?'flex':'none';
+  document.getElementById('goalDeleteBtn').style.display=isEdit?'inline-block':'none';
+  document.getElementById('goalSaveBtn').textContent=isEdit?'SAVE':'CREATE GOAL';
   document.getElementById('goalModal').classList.add('show');
   document.getElementById('goalTitle').focus();
 }
-function hideGoalModal(){document.getElementById('goalModal').classList.remove('show')}
+
+function hideGoalModal(){document.getElementById('goalModal').classList.remove('show');editingGoalId=null}
+
 async function saveGoal(){
   const title=document.getElementById('goalTitle').value.trim();
   if(!title)return;
@@ -574,7 +600,20 @@ async function saveGoal(){
     business:goalFormBiz,
     target_date:document.getElementById('goalTargetDate').value||null
   };
-  await insert('goals',data);
+  if(editingGoalId){
+    data.status=goalFormStatus;
+    if(goalFormStatus==='Completed')data.completed_at=new Date().toISOString();
+    await patch('goals','goal_id=eq.'+editingGoalId,data);
+  } else {
+    await insert('goals',data);
+  }
+  hideGoalModal();
+  loadGoals();
+}
+
+async function deleteGoal(){
+  if(!editingGoalId||!confirm('Delete this goal?'))return;
+  try{await fetch(`${SB_URL}/rest/v1/goals?goal_id=eq.${editingGoalId}`,{method:'DELETE',headers:H})}catch(e){}
   hideGoalModal();
   loadGoals();
 }
@@ -1352,7 +1391,8 @@ function renderGoalCard(g,depth,startIdx,levels){
   const typeTag=g.goal_type.toUpperCase();
   const children=getChildren(g.goal_id);
 
-  let html=`<div class="goal-card" style="margin-left:${indent}px;${depth>0?'border-left-width:2px;':''}">
+  const gJson=JSON.stringify({goal_id:g.goal_id,title:g.title,description:g.description||'',business:g.business,goal_type:g.goal_type,target_date:g.target_date,status:g.status,progress_pct:g.progress_pct,parent_goal_id:g.parent_goal_id}).replace(/'/g,'&#39;');
+  let html=`<div class="goal-card" style="margin-left:${indent}px;${depth>0?'border-left-width:2px;':''}cursor:pointer" onclick='showGoalModal(${gJson})'>
     <div class="task-top">
       <div class="goal-title">${g.title}</div>
       <span class="task-priority Medium" style="background:var(--red-dim);color:var(--red);font-size:8px">${g.goal_id} ${typeTag}</span>
