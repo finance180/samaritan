@@ -614,8 +614,11 @@ function renderTodayView(){
   const nowTime=new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'America/Chicago'});
   let html='';
 
-  // Goals banner
+  // Goals banner + goal tasks
   if(cachedGoalBanner.length){
+    // Collect IDs of tasks already shown in today/overdue so we don't duplicate
+    const shownIds=new Set([...todayTasks,...overdueTasks].map(t=>t.task_id));
+    const goalTasksToShow=[];
     html+='<div class="section-header">GOALS</div><div class="goal-banner">';
     cachedGoalBanner.forEach(({goal:g,activeTask:at})=>{
       const isStale=!at&&g.progress_pct<100;
@@ -627,8 +630,14 @@ function renderTodayView(){
         ${isStale?'<div class="goal-strip-stale">\u26a0 STALE</div>':''}
         ${nextText?`<div class="goal-strip-next">${nextText}</div>`:''}
       </div>`;
+      // Collect active goal tasks not already in today/overdue
+      if(at&&!shownIds.has(at.task_id))goalTasksToShow.push(at);
     });
     html+='</div>';
+    // Render goal tasks as regular task cards
+    if(goalTasksToShow.length){
+      goalTasksToShow.forEach(t=>{html+=taskCard(t)});
+    }
   }
 
   // Calendar events from cache
