@@ -65,7 +65,7 @@ curl -sL "${SUPABASE_URL}/rest/v1/notes" "${HEADERS[@]}" \
 ### Calendar Event
 ```bash
 curl -sL "${SUPABASE_URL}/rest/v1/calendar_cache" "${HEADERS[@]}" \
-  -H "Content-Type: application/json" -H "Prefer: return=representation" \
+  -H "Content-Type: application/json" -H "Prefer: return=representation,resolution=ignore-duplicates" \
   -d '{"event_date":"YYYY-MM-DD","start_time":"HH:MM","end_time":"HH:MM","summary":"...","location":"","all_day":false}'
 ```
 

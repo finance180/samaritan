@@ -478,9 +478,10 @@ async function patch(table,filter,data){
   }catch(e){return null;}
 }
 
-async function insert(table,data){
+async function insert(table,data,ignoreDupes){
   try{
-    const r=await fetch(`${SB_URL}/rest/v1/${table}`,{method:'POST',headers:{...H,'Prefer':'return=representation'},body:JSON.stringify(data)});
+    const prefer=ignoreDupes?'return=representation,resolution=ignore-duplicates':'return=representation';
+    const r=await fetch(`${SB_URL}/rest/v1/${table}`,{method:'POST',headers:{...H,'Prefer':prefer},body:JSON.stringify(data)});
     return r.json();
   }catch(e){return null;}
 }
@@ -661,7 +662,7 @@ async function quickAddEvent(title){
   // Calculate end time (+1 hour)
   const [sh,sm]=startTime.split(':').map(Number);
   const endTime=String(sh+1).padStart(2,'0')+':'+String(sm).padStart(2,'0');
-  await insert('calendar_cache',{event_date:eventDate,start_time:startTime,end_time:endTime,summary:cleanTitle||title,all_day:false,location:''});
+  await insert('calendar_cache',{event_date:eventDate,start_time:startTime,end_time:endTime,summary:cleanTitle||title,all_day:false,location:''},true);
   hideAddModal();
   loadDashboard();
 }
