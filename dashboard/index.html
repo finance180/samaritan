@@ -201,6 +201,25 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;fo
 .goal-strip-next{font-size:11px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;flex-shrink:1}
 .goal-strip-stale{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--high);letter-spacing:1px;flex-shrink:0}
 
+/* === COACH CHAT === */
+.coach-btn{position:fixed;bottom:calc(130px + var(--safe-bottom));right:20px;background:var(--bg-card);border:1px solid var(--red);border-radius:20px;padding:8px 16px;color:var(--red-bright);font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:1px;cursor:pointer;z-index:98;display:none;box-shadow:0 2px 10px rgba(0,0,0,0.5);transition:transform .2s}
+.coach-btn:active{transform:scale(.95)}
+.coach-modal{display:none;position:fixed;inset:0;background:var(--bg);z-index:300;flex-direction:column}
+.coach-modal.show{display:flex}
+.coach-header{display:flex;align-items:center;justify-content:space-between;padding:calc(12px + var(--safe-top)) 16px 12px;border-bottom:1px solid var(--red-dim);background:#111}
+.coach-header-title{font-family:'Share Tech Mono',monospace;font-size:14px;color:var(--red-bright);letter-spacing:2px;font-weight:700}
+.coach-close{font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-dim);cursor:pointer;padding:8px;min-height:44px;display:flex;align-items:center}
+.coach-messages{flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:10px;-webkit-overflow-scrolling:touch}
+.coach-msg{max-width:85%;padding:10px 14px;border-radius:8px;font-size:14px;line-height:1.5;font-weight:600}
+.coach-msg.assistant{background:var(--bg-card);border:1px solid var(--border);color:var(--text);align-self:flex-start;border-radius:8px 8px 8px 2px}
+.coach-msg.user{background:var(--red-dim);border:1px solid var(--red);color:var(--text-bright);align-self:flex-end;border-radius:8px 8px 2px 8px}
+.coach-msg.typing{color:var(--text-dim);font-style:italic}
+.coach-input-row{display:flex;gap:8px;padding:12px 16px calc(12px + var(--safe-bottom));border-top:1px solid var(--border);background:#111}
+.coach-input{flex:1;background:var(--bg-card);border:1px solid var(--border);border-radius:20px;padding:10px 16px;color:var(--text-bright);font-size:14px;font-family:'Rajdhani',sans-serif;font-weight:600;outline:none;min-height:44px}
+.coach-input::placeholder{color:var(--text-dim)}
+.coach-send{background:var(--red);border:none;border-radius:50%;width:44px;height:44px;color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.coach-send:active{opacity:.7}
+
 /* === DROP ZONE === */
 .drop-zone{margin:0 20px 8px;border:2px dashed var(--border);border-radius:4px;padding:16px;text-align:center;transition:all .2s;cursor:pointer;min-height:44px}
 .drop-zone.drag-over{border-color:var(--red-bright);background:rgba(196,30,30,0.08)}
@@ -320,6 +339,22 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;fo
   <div class="add-modal-btns">
     <button class="cancel" onclick="hideAddModal()">CANCEL</button>
     <button class="submit" onclick="smartAdd()">ADD</button>
+  </div>
+</div>
+
+<!-- COACH BUTTON (Goals tab only) -->
+<button class="coach-btn" id="coachBtn" onclick="openCoach()">&#9733; TALK TO COACH</button>
+
+<!-- COACH CHAT MODAL -->
+<div class="coach-modal" id="coachModal">
+  <div class="coach-header">
+    <div class="coach-header-title">&#9733; GOAL COACH</div>
+    <div class="coach-close" onclick="closeCoach()">CLOSE</div>
+  </div>
+  <div class="coach-messages" id="coachMessages"></div>
+  <div class="coach-input-row">
+    <input class="coach-input" id="coachInput" placeholder="Describe a goal or ask for help..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendCoachMsg()}">
+    <button class="coach-send" onclick="sendCoachMsg()">&#9654;</button>
   </div>
 </div>
 
@@ -506,6 +541,7 @@ function switchView(name,el){
   if(name==='Email')loadEmailSuggestions();
   if(name==='Notes')loadNotes();
   if(name==='Goals')loadGoals();
+  document.getElementById('coachBtn').style.display=name==='Goals'?'block':'none';
 }
 
 function filterBiz(biz,el){
@@ -1426,6 +1462,69 @@ function renderGoalCard(g,depth,startIdx,levels){
   });
 
   return html;
+}
+
+// === COACH CHAT ===
+let coachMessages=[];
+let coachBusy=false;
+
+function openCoach(){
+  document.getElementById('coachModal').classList.add('show');
+  if(!coachMessages.length){
+    // Opening greeting
+    const greeting="Hey Brian. What goal are you working on, or want to work through? I can help you break it down, sharpen it, or figure out the next move.";
+    coachMessages.push({role:'assistant',content:greeting});
+    renderCoachMessages();
+  }
+  document.getElementById('coachInput').focus();
+}
+
+function closeCoach(){document.getElementById('coachModal').classList.remove('show')}
+
+function renderCoachMessages(){
+  const container=document.getElementById('coachMessages');
+  container.innerHTML=coachMessages.map(m=>`<div class="coach-msg ${m.role}">${m.content.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/\n/g,'<br>')}</div>`).join('');
+  container.scrollTop=container.scrollHeight;
+}
+
+async function sendCoachMsg(){
+  if(coachBusy)return;
+  const input=document.getElementById('coachInput');
+  const text=input.value.trim();
+  if(!text)return;
+  input.value='';
+
+  coachMessages.push({role:'user',content:text});
+  coachMessages.push({role:'assistant',content:'Thinking...'});
+  renderCoachMessages();
+  coachBusy=true;
+
+  try{
+    // Build goal context from current view if available
+    let goalContext=null;
+    if(allGoalsFlat.length){
+      const active=allGoalsFlat.filter(g=>g.status==='Active');
+      if(active.length===1)goalContext=active[0];
+    }
+
+    const res=await fetch(SB_URL+'/functions/v1/goal-coach',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        messages:coachMessages.filter(m=>m.content!=='Thinking...').map(m=>({role:m.role,content:m.content})),
+        goalContext:goalContext
+      })
+    });
+    const data=await res.json();
+    // Replace thinking message with actual reply
+    coachMessages.pop();
+    coachMessages.push({role:'assistant',content:data.reply||data.error||'Something went wrong.'});
+  }catch(e){
+    coachMessages.pop();
+    coachMessages.push({role:'assistant',content:'Connection error. Try again.'});
+  }
+  coachBusy=false;
+  renderCoachMessages();
 }
 
 // Init
