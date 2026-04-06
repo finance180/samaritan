@@ -314,12 +314,39 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 </div>
 
 <!-- QUICK ADD -->
-<button class="fab" onclick="showAddModal()">+</button>
+<button class="fab" onclick="fabAction()">+</button>
 <div class="add-modal" id="addModal">
   <input id="addInput" placeholder="Task or event... e.g. 'Lunch with Mom tomorrow'" onkeydown="if(event.key==='Enter')smartAdd()">
   <div class="add-modal-btns">
     <button class="cancel" onclick="hideAddModal()">CANCEL</button>
     <button class="submit" onclick="smartAdd()">ADD</button>
+  </div>
+</div>
+
+<!-- GOAL ADD MODAL -->
+<div class="edit-modal" id="goalModal">
+  <label>GOAL TITLE</label>
+  <input id="goalTitle" placeholder="What do you want to achieve?">
+  <label>DESCRIPTION</label>
+  <textarea id="goalDesc" placeholder="What does success look like?" style="width:100%;background:var(--bg-card);border:1px solid var(--red-dim);border-radius:4px;padding:12px;color:var(--text-bright);font-size:14px;font-family:'Rajdhani',sans-serif;outline:none;min-height:80px;resize:vertical"></textarea>
+  <label>TYPE</label>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <button class="task-btn note-type-btn" onclick="setGoalFormType('annual',this)">ANNUAL</button>
+    <button class="task-btn note-type-btn" onclick="setGoalFormType('quarterly',this)">QUARTERLY</button>
+    <button class="task-btn note-type-btn" onclick="setGoalFormType('monthly',this)">MONTHLY</button>
+    <button class="task-btn note-type-btn active" onclick="setGoalFormType('weekly',this)">WEEKLY</button>
+  </div>
+  <label>TARGET DATE</label>
+  <input id="goalTargetDate" type="date" style="width:100%;background:var(--bg-card);border:1px solid var(--red-dim);border-radius:4px;padding:12px;color:var(--text-bright);font-size:14px;font-family:'Rajdhani',sans-serif;outline:none;min-height:44px">
+  <label>BUSINESS</label>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <button class="task-btn note-biz-btn active" onclick="setGoalFormBiz('Personal',this)">PERSONAL</button>
+    <button class="task-btn note-biz-btn" onclick="setGoalFormBiz('Happy Pup Manor',this)">HPM</button>
+    <button class="task-btn note-biz-btn" onclick="setGoalFormBiz('Reseller Business',this)">RESELLER</button>
+  </div>
+  <div class="edit-modal-btns">
+    <button class="cancel" onclick="hideGoalModal()">CANCEL</button>
+    <button class="save" onclick="saveGoal()">CREATE GOAL</button>
   </div>
 </div>
 
@@ -457,7 +484,9 @@ function setOnline(v){
   el.innerHTML=v?'<span class="dot"></span>ONLINE':'<span class="dot"></span>OFFLINE';
 }
 
+let currentView='Tasks';
 function switchView(name,el){
+  currentView=name;
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('view'+name).classList.add('active');
@@ -508,8 +537,47 @@ function navTo(view){
   switchView(view,navItems[idx]);
 }
 
+function fabAction(){
+  if(currentView==='Goals')showGoalModal();
+  else if(currentView==='Notes')showNoteModal();
+  else showAddModal();
+}
+
 function showAddModal(){document.getElementById('addModal').classList.add('show');document.getElementById('addInput').focus()}
 function hideAddModal(){document.getElementById('addModal').classList.remove('show');document.getElementById('addInput').value=''}
+
+// Goal modal
+let goalFormType='weekly';
+let goalFormBiz='Personal';
+function setGoalFormType(t,el){goalFormType=t;el.parentElement.querySelectorAll('.note-type-btn').forEach(b=>b.classList.remove('active'));el.classList.add('active')}
+function setGoalFormBiz(b,el){goalFormBiz=b;el.parentElement.querySelectorAll('.note-biz-btn').forEach(b=>b.classList.remove('active'));el.classList.add('active')}
+function showGoalModal(){
+  document.getElementById('goalTitle').value='';
+  document.getElementById('goalDesc').value='';
+  document.getElementById('goalTargetDate').value='';
+  goalFormType=currentGoalType||'weekly';
+  goalFormBiz='Personal';
+  // Sync type buttons to current filter
+  document.querySelectorAll('#goalModal .note-type-btn').forEach(b=>{b.classList.toggle('active',b.textContent===goalFormType.toUpperCase())});
+  document.querySelectorAll('#goalModal .note-biz-btn').forEach(b=>{b.classList.toggle('active',b.textContent==='PERSONAL')});
+  document.getElementById('goalModal').classList.add('show');
+  document.getElementById('goalTitle').focus();
+}
+function hideGoalModal(){document.getElementById('goalModal').classList.remove('show')}
+async function saveGoal(){
+  const title=document.getElementById('goalTitle').value.trim();
+  if(!title)return;
+  const data={
+    title:title,
+    description:document.getElementById('goalDesc').value.trim(),
+    goal_type:goalFormType,
+    business:goalFormBiz,
+    target_date:document.getElementById('goalTargetDate').value||null
+  };
+  await insert('goals',data);
+  hideGoalModal();
+  loadGoals();
+}
 
 const EVENT_WORDS=/\b(lunch|dinner|breakfast|brunch|meeting|call|appointment|coffee|drinks|party|wedding|ceremony|game|match|concert|show|visit|pickup|drop.?off|class|session|lesson|interview|demo|presentation|hangout|date)\b/i;
 const TIME_WORDS=/\b(at \d|noon|morning|afternoon|evening|\d{1,2}:\d{2}|\d{1,2}\s?(am|pm))\b/i;
