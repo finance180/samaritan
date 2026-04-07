@@ -790,8 +790,8 @@ function renderTodayView(){
     }
   }
 
-  // Calendar events from cache
-  const events=cachedEvents;
+  // Calendar events from cache — hide finished events
+  const events=cachedEvents.filter(ev=>ev.all_day||!ev.end_time||nowTime<=ev.end_time);
   if(events.length>0){
     html+='<div class="section-header">CALENDAR</div>';
     events.forEach(ev=>{
