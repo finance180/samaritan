@@ -56,6 +56,23 @@ Quotes (0-indexed):
 
 Format: `💭 "[quote]" — [author]\nWhat does this mean for your day today?`
 
+**Step 1.5 — Last Night's Priorities:**
+Check if Brian set priorities during last night's wind-down:
+```bash
+YESTERDAY=$(TZ=America/Chicago date -v-1d +%Y-%m-%d)
+curl -sL "${SUPABASE_URL}/rest/v1/notes?source=eq.wind-down&tags=cs.{${YESTERDAY}}&order=created_at.desc&limit=1" "${HEADERS[@]}"
+```
+
+If a wind-down note exists, extract the "Tomorrow's Top 3" section and display:
+```
+🎯 Last night you set these priorities for today:
+1. [High] Submit CPC documentation — Reseller Business
+2. [Medium] Review staff schedule — Happy Pup Manor
+3. [Medium] Schedule dentist appointment — Personal
+```
+
+If no wind-down note found, skip this step silently.
+
 **Step 2 — Process Recurring Tasks (Skill 5):**
 Cycle any overdue recurring tasks before showing today's list.
 
@@ -223,26 +240,17 @@ Midday check-in — X tasks still pending today:
 📅 Remaining today: 2:00 PM Vet appointment | 4:00 PM Supplier call
 ```
 
-### 3. Evening Check-in (6:00 PM)
+### 3. Evening Wind-Down (6:00 PM)
 
-Final review of any outstanding tasks due today.
+Invoke the **wind-down** skill for a guided 3-step evening ritual:
 
-**Steps:**
-1. Query tasks due today
-2. Flag any that are still incomplete
-3. Suggest rescheduling if needed
+1. **Quick Wins** — show today's completed tasks, ask Brian for his top 3 wins
+2. **Tomorrow's Top 3** — show upcoming/overdue tasks, ask Brian to pick 3 priorities
+3. **Open Loops** — brain dump anything still in his head, triage each item
 
-**Output format:**
-```
-Evening wrap-up — 1 task still outstanding:
+The wind-down skill handles all the logic. See `.claude/skills/wind-down.md` for the full flow.
 
-- [High] Follow up with Hasbro (Reseller — Compliance Push)
-  → Want me to reschedule this to tomorrow?
-
-Everything else is clear. Nice work today.
-```
-
-If all complete: "All tasks for today are done. Nice work, Brian."
+After the wind-down completes, it saves a journal note (`source: "wind-down"`) that the morning briefing picks up.
 
 ### 4. Weekly Review
 
