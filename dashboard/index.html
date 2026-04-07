@@ -978,6 +978,8 @@ function renderTodayView(){
 
 function taskCard(t,isOverdue=false){
   const dueDateStr=t.due_date?fmtDate(t.due_date):'';
+  const emailMatch=t.notes&&t.notes.match(/\(ID: ([^)]+)\)/);
+  const emailBtn=emailMatch?`<a class="task-btn" href="https://mail.google.com/mail/u/0/#all/${emailMatch[1]}" target="_blank" onclick="event.stopPropagation()" style="border-color:var(--medium);color:var(--medium);text-decoration:none;text-align:center">OPEN EMAIL</a>`:'';
   return `<div class="task-card priority-${t.priority}" onclick="toggleActions('${t.task_id}')">
     <div class="task-inner">
       <div class="task-top">
@@ -995,6 +997,7 @@ function taskCard(t,isOverdue=false){
     <div class="task-actions" id="actions-${t.task_id}">
       <button class="task-btn complete" onclick="event.stopPropagation();completeTask('${t.task_id}',this)">COMPLETE</button>
       <button class="task-btn postpone" onclick="event.stopPropagation();postponeTask('${t.task_id}',this)">TOMORROW</button>
+      ${emailBtn}
     </div>
   </div>`;
 }
