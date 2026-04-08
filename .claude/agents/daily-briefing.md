@@ -190,12 +190,12 @@ curl -sL "${SUPABASE_URL}/rest/v1/tasks?due_date=lt.${TODAY}&status=eq.Active&or
 Group by business with priority indicators.
 
 **Step 6.5 — Overdue Task Triage:**
-If there are overdue tasks (3+ days overdue), help Brian break them down. For each overdue task that's been sitting 3+ days:
+For **every** overdue task, help Brian decide what to do with it:
 
-1. Flag it prominently with how many days overdue
-2. Ask **why** it's stuck — is it too big? Blocked? Low motivation? Unclear next step?
-3. Offer to break it into 2-3 smaller sub-tasks with concrete first actions and due dates
-4. Offer to reschedule if the original due date was unrealistic
+1. Flag it with how many days overdue
+2. If the task looks like it has multiple steps, offer to break it into 2-3 smaller sub-tasks with concrete first actions and due dates
+3. If it's a simple task, offer to reschedule to today or this week
+4. If it's been overdue 5+ days, ask if it should be dropped or delegated
 
 Format:
 ```
@@ -209,9 +209,12 @@ Format:
 
 "Submit updated insurance certificates" — 1 day overdue
   → Reschedule to today?
+
+"Review old vendor contract" — 8 days overdue
+  → This has been sitting a while. Still relevant? Reschedule, delegate to Gabby, or drop?
 ```
 
-Only triage tasks 3+ days overdue to avoid nagging on fresh misses. For tasks 1-2 days overdue, just show them in the overdue list normally. Keep triage suggestions brief — propose, don't lecture.
+Keep triage suggestions brief — propose, don't lecture.
 
 For each task, check if any notes are linked:
 ```bash
