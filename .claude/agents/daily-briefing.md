@@ -189,6 +189,30 @@ curl -sL "${SUPABASE_URL}/rest/v1/tasks?due_date=lt.${TODAY}&status=eq.Active&or
 ```
 Group by business with priority indicators.
 
+**Step 6.5 — Overdue Task Triage:**
+If there are overdue tasks (3+ days overdue), help Brian break them down. For each overdue task that's been sitting 3+ days:
+
+1. Flag it prominently with how many days overdue
+2. Ask **why** it's stuck — is it too big? Blocked? Low motivation? Unclear next step?
+3. Offer to break it into 2-3 smaller sub-tasks with concrete first actions and due dates
+4. Offer to reschedule if the original due date was unrealistic
+
+Format:
+```
+🔴 Overdue Triage:
+
+"Book flights and hotel for Lester wedding" — 3 days overdue
+  This looks like a multi-step task. Want me to break it down?
+  → Research flight options (today)
+  → Compare hotel prices (tomorrow)
+  → Book both (Thu)
+
+"Submit updated insurance certificates" — 1 day overdue
+  → Reschedule to today?
+```
+
+Only triage tasks 3+ days overdue to avoid nagging on fresh misses. For tasks 1-2 days overdue, just show them in the overdue list normally. Keep triage suggestions brief — propose, don't lecture.
+
 For each task, check if any notes are linked:
 ```bash
 curl -sL "${SUPABASE_URL}/rest/v1/notes?linked_task_ids=cs.{T-XXX}&select=note_id&limit=5" "${HEADERS[@]}"
@@ -227,6 +251,16 @@ Good morning Brian. You have X tasks due today:
 
 **Personal**
 - [Low] Order office supplies
+
+⚠️ Overdue (X tasks):
+- [High] Book flights for Lester wedding — 3 days overdue
+
+🔴 Overdue Triage:
+"Book flights and hotel for Lester wedding" — 3 days overdue
+  Want me to break this down?
+  → Research flight options (today)
+  → Compare hotel prices (tomorrow)
+  → Book both (Thu)
 
 📅 Calendar:
 - 9:00 AM — Team standup
