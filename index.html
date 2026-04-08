@@ -560,6 +560,14 @@ async function insert(table,data,ignoreDupes){
   }catch(e){return null;}
 }
 
+async function syncCalendar(startDate,endDate){
+  try{
+    const r=await fetch(SB_URL+'/functions/v1/sync-calendar?start_date='+startDate+'&end_date='+(endDate||startDate));
+    if(!r.ok)throw new Error(r.status);
+    return r.json();
+  }catch(e){return null;}
+}
+
 function setOnline(v){
   isOnline=v;
   const el=document.getElementById('status');
@@ -927,6 +935,9 @@ async function loadDashboard(){
   document.getElementById('dateBar').textContent=now.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',timeZone:'America/Chicago'}).toUpperCase();
   document.getElementById('lastSync').textContent='SYNCED '+now.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/Chicago'});
 
+  // Sync calendar from Google (fire-and-await so cache is fresh)
+  await syncCalendar(t,t);
+
   // Parallel queries
   const [today_t,overdue_t,all_t,done_t,events,activeGoals]=await Promise.all([
     q('tasks','due_date=eq.'+t+'&status=eq.Active&order=priority'),
@@ -1096,6 +1107,9 @@ async function loadWeekView(){
     const d=new Date(now);d.setDate(d.getDate()+i);
     days.push(d.toLocaleDateString('en-CA',{timeZone:'America/Chicago'}));
   }
+
+  // Sync week's calendar from Google
+  await syncCalendar(days[0],days[6]);
 
   const [tasks,events]=await Promise.all([
     q('tasks','due_date=gte.'+days[0]+'&due_date=lte.'+days[6]+'&status=eq.Active&order=due_date,priority'),
