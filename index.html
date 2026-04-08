@@ -349,6 +349,7 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;fo
 <!-- GOALS VIEW -->
 <div class="view" id="viewGoals">
   <div class="note-filter-row" id="goalTypeFilter">
+    <div class="note-filter-btn" onclick="setGoalTypeFilter('tree',this)">TREE</div>
     <div class="note-filter-btn active" onclick="setGoalTypeFilter('annual',this)">ANNUAL</div>
     <div class="note-filter-btn" onclick="setGoalTypeFilter('quarterly',this)">QUARTERLY</div>
     <div class="note-filter-btn" onclick="setGoalTypeFilter('monthly',this)">MONTHLY</div>
@@ -402,6 +403,10 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;fo
     <button class="task-btn note-type-btn" onclick="setGoalFormType('monthly',this)">MONTHLY</button>
     <button class="task-btn note-type-btn active" onclick="setGoalFormType('weekly',this)">WEEKLY</button>
   </div>
+  <label>PARENT GOAL</label>
+  <select id="goalParentSelect" style="width:100%;background:var(--bg-card);border:1px solid var(--red-dim);border-radius:4px;padding:12px;color:var(--text-bright);font-size:14px;font-family:'Rajdhani',sans-serif;outline:none;min-height:44px;-webkit-appearance:none;appearance:none">
+    <option value="">None</option>
+  </select>
   <label>TARGET DATE</label>
   <input id="goalTargetDate" type="date" style="width:100%;background:var(--bg-card);border:1px solid var(--red-dim);border-radius:4px;padding:12px;color:var(--text-bright);font-size:14px;font-family:'Rajdhani',sans-serif;outline:none;min-height:44px">
   <label>BUSINESS</label>
@@ -629,20 +634,48 @@ function hideAddModal(){document.getElementById('addModal').classList.remove('sh
 let goalFormType='weekly';
 let goalFormBiz='Personal';
 let goalFormStatus='Active';
+let goalFormParent=null;
 let editingGoalId=null;
-function setGoalFormType(t,el){goalFormType=t;el.parentElement.querySelectorAll('.note-type-btn').forEach(b=>b.classList.remove('active'));el.classList.add('active')}
+
+const PARENT_TYPE_MAP={weekly:'monthly',monthly:'quarterly',quarterly:'annual'};
+
+function populateParentDropdown(){
+  const sel=document.getElementById('goalParentSelect');
+  const parentType=PARENT_TYPE_MAP[goalFormType];
+  sel.innerHTML='<option value="">None</option>';
+  if(!parentType){sel.value='';goalFormParent=null;return}
+  const candidates=allGoalsFlat.filter(g=>g.goal_type===parentType&&g.status==='Active');
+  const bizMap={'Happy Pup Manor':'HPM','Reseller Business':'Reseller','Personal':'Personal'};
+  candidates.forEach(g=>{
+    const opt=document.createElement('option');
+    opt.value=g.goal_id;
+    opt.textContent=g.goal_id+' '+g.title+' ('+( bizMap[g.business]||g.business)+')';
+    sel.appendChild(opt);
+  });
+  sel.value=goalFormParent||'';
+  // If previous parent not in new list, reset
+  if(sel.value!==( goalFormParent||''))goalFormParent=null;
+}
+
+function setGoalFormType(t,el){goalFormType=t;el.parentElement.querySelectorAll('.note-type-btn').forEach(b=>b.classList.remove('active'));el.classList.add('active');populateParentDropdown()}
 function setGoalFormBiz(b,el){goalFormBiz=b;el.parentElement.querySelectorAll('.note-biz-btn').forEach(b=>b.classList.remove('active'));el.classList.add('active')}
 function setGoalFormStatus(s,el){goalFormStatus=s;el.parentElement.querySelectorAll('.goal-status-btn').forEach(b=>b.classList.remove('active'));el.classList.add('active')}
 
-function showGoalModal(goal){
+function showGoalModal(goal,presetParent){
   editingGoalId=goal?goal.goal_id:null;
   const isEdit=!!goal;
   document.getElementById('goalTitle').value=goal?goal.title:'';
   document.getElementById('goalDesc').value=goal?goal.description||'':'';
   document.getElementById('goalTargetDate').value=goal?goal.target_date||'':'';
-  goalFormType=goal?goal.goal_type:(currentGoalType||'weekly');
-  goalFormBiz=goal?goal.business:'Personal';
+  goalFormType=goal?goal.goal_type:(currentGoalType==='tree'?'weekly':(currentGoalType||'weekly'));
+  goalFormBiz=goal?goal.business:(presetParent?presetParent.business:'Personal');
   goalFormStatus=goal?goal.status:'Active';
+  goalFormParent=goal?goal.parent_goal_id||null:(presetParent?presetParent.goal_id:null);
+  // If preset parent provided (creating sub-goal), set type one level down
+  if(!goal&&presetParent){
+    const childType={annual:'quarterly',quarterly:'monthly',monthly:'weekly'}[presetParent.goal_type];
+    if(childType)goalFormType=childType;
+  }
   // Sync type buttons
   document.querySelectorAll('#goalModal .note-type-btn').forEach(b=>{b.classList.toggle('active',b.textContent===goalFormType.toUpperCase())});
   // Sync biz buttons
@@ -650,6 +683,8 @@ function showGoalModal(goal){
   document.querySelectorAll('#goalModal .note-biz-btn').forEach(b=>{b.classList.toggle('active',b.textContent===(bizMap[goalFormBiz]||'PERSONAL'))});
   // Sync status buttons
   document.querySelectorAll('#goalModal .goal-status-btn').forEach(b=>{b.classList.toggle('active',b.textContent===goalFormStatus.toUpperCase().replace('-',''))});
+  // Populate parent dropdown
+  populateParentDropdown();
   // Show/hide edit-only elements
   document.getElementById('goalStatusLabel').style.display=isEdit?'block':'none';
   document.getElementById('goalStatusRow').style.display=isEdit?'flex':'none';
@@ -684,13 +719,25 @@ function renderGoalDetail(goal,activeTasks,completedTasks){
   const target=goal.target_date?new Date(goal.target_date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric',timeZone:'America/Chicago'}):'';
   const gJson=JSON.stringify(goal).replace(/'/g,'&#39;');
 
+  // Find parent goal if exists
+  const parentGoal=goal.parent_goal_id?allGoalsFlat.find(g=>g.goal_id===goal.parent_goal_id):null;
+  // Find child goals
+  const childGoals=allGoalsFlat.filter(g=>g.parent_goal_id===goal.goal_id&&g.status==='Active');
+
   let html=`<div class="goal-detail-header">
     <button class="goal-detail-back" onclick="hideGoalDetail()">&larr;</button>
     <div class="goal-detail-header-title">${goal.title}</div>
     <button class="goal-detail-header-edit" onclick='showGoalModal(${gJson})'>EDIT</button>
   </div>
-  <div class="goal-detail-body">
-    <div class="goal-detail-meta">
+  <div class="goal-detail-body">`;
+
+  // Parent breadcrumb
+  if(parentGoal){
+    const pJson=JSON.stringify(parentGoal).replace(/'/g,'&#39;');
+    html+=`<div style="font-size:11px;color:var(--text-dim);margin-bottom:8px;cursor:pointer" onclick='showGoalDetail(${pJson})'>&#8593; ${parentGoal.goal_type.toUpperCase()}: ${parentGoal.title} (${parentGoal.progress_pct}%)</div>`;
+  }
+
+  html+=`<div class="goal-detail-meta">
       <span class="goal-detail-tag">${typeTag}</span>
       <span class="goal-detail-tag biz">${bizMap[goal.business]||goal.business}</span>
       <span class="goal-detail-tag${statusClass}">${goal.status.toUpperCase()}</span>
@@ -708,6 +755,31 @@ function renderGoalDetail(goal,activeTasks,completedTasks){
 
   // Description
   if(goal.description)html+=`<div class="goal-detail-desc">${goal.description}</div>`;
+
+  // Sub-goals section (show for non-weekly goals)
+  if(goal.goal_type!=='weekly'){
+    const childType={annual:'QUARTERLY',quarterly:'MONTHLY',monthly:'WEEKLY'}[goal.goal_type]||'SUB';
+    html+=`<div class="goal-detail-section">
+      <div class="goal-detail-section-hdr">SUB-GOALS <span class="count">${childGoals.length}</span>
+        <button style="margin-left:auto;background:var(--red-dim);color:var(--red);border:1px solid var(--red);border-radius:4px;padding:4px 10px;font-size:11px;font-family:'Rajdhani',sans-serif;cursor:pointer;font-weight:600" onclick='hideGoalDetail();showGoalModal(null,${gJson})'>+ ADD ${childType} GOAL</button>
+      </div>`;
+    if(childGoals.length){
+      childGoals.forEach(cg=>{
+        const cgJson=JSON.stringify(cg).replace(/'/g,'&#39;');
+        html+=`<div class="goal-card" style="cursor:pointer;margin-bottom:8px" onclick='showGoalDetail(${cgJson})'>
+          <div class="task-top">
+            <div class="goal-title">${cg.title}</div>
+            <span class="task-priority Medium" style="background:var(--red-dim);color:var(--red);font-size:8px">${cg.goal_id} ${cg.goal_type.toUpperCase()}</span>
+          </div>
+          <div class="goal-progress"><div class="goal-progress-bar" style="width:${cg.progress_pct}%"></div></div>
+          <div class="goal-meta"><span>${cg.progress_pct}%</span><span>${cg.business}</span></div>
+        </div>`;
+      });
+    } else {
+      html+='<div class="goal-detail-empty">No sub-goals yet</div>';
+    }
+    html+='</div>';
+  }
 
   // Active tasks
   html+=`<div class="goal-detail-section">
@@ -760,12 +832,14 @@ async function refreshGoalDetail(){
 async function saveGoal(){
   const title=document.getElementById('goalTitle').value.trim();
   if(!title)return;
+  const selectedParent=document.getElementById('goalParentSelect').value||null;
   const data={
     title:title,
     description:document.getElementById('goalDesc').value.trim(),
     goal_type:goalFormType,
     business:goalFormBiz,
-    target_date:document.getElementById('goalTargetDate').value||null
+    target_date:document.getElementById('goalTargetDate').value||null,
+    parent_goal_id:selectedParent
   };
   if(editingGoalId){
     data.status=goalFormStatus;
@@ -906,11 +980,25 @@ function renderTodayView(){
       const isStale=!at&&g.progress_pct<100;
       const nextText=at?'\u25b8 '+at.title:(g.next_task_hint?'\u25b8 '+g.next_task_hint:'');
       const gJson=JSON.stringify(g).replace(/'/g,'&#39;');
+      // Build parent chain for this weekly goal
+      let parentChain='';
+      if(g.parent_goal_id&&allGoalsFlat.length){
+        let pid=g.parent_goal_id;
+        const parts=[];
+        while(pid){
+          const pg=allGoalsFlat.find(x=>x.goal_id===pid);
+          if(!pg)break;
+          parts.push(pg.title+' ('+pg.goal_type+')');
+          pid=pg.parent_goal_id;
+        }
+        if(parts.length)parentChain=parts.join(' \u2192 ');
+      }
       html+=`<div class="goal-strip${isStale?' stale':''}" onclick='showGoalDetail(${gJson})'>
         <div class="goal-strip-title">${g.title}</div>
         <div class="goal-strip-bar"><div class="goal-strip-bar-fill" style="width:${g.progress_pct}%"></div></div>
         <div class="goal-strip-pct">${g.progress_pct}%</div>
         ${isStale?'<div class="goal-strip-stale">\u26a0 STALE</div>':''}
+        ${parentChain?`<div style="font-size:10px;color:var(--text-dim);margin-top:2px">part of: ${parentChain}</div>`:''}
         ${nextText?`<div class="goal-strip-next">${nextText}</div>`:''}
       </div>`;
       // Collect active goal tasks not already in today/overdue
@@ -1528,12 +1616,31 @@ function renderCascade(){
   if(!allGoalsFlat.length){container.innerHTML='<div class="empty">NO GOALS YET<br>Use + to create your first goal</div>';return}
 
   const levels=['annual','quarterly','monthly','weekly'];
+  let html='';
+
+  // TREE mode: show full hierarchy from annual roots down
+  if(currentGoalType==='tree'){
+    const annualRoots=allGoalsFlat.filter(g=>g.goal_type==='annual'&&g.status==='Active');
+    if(annualRoots.length){
+      annualRoots.forEach(g=>{html+=renderGoalCard(g,0,0,levels)});
+    }
+    // Orphaned goals: non-annual with no parent
+    const orphans=allGoalsFlat.filter(g=>g.goal_type!=='annual'&&!g.parent_goal_id&&g.status==='Active');
+    if(orphans.length){
+      html+='<div class="section-header" style="margin-top:16px;color:var(--red)">ORPHANED (NO PARENT)</div>';
+      orphans.forEach(g=>{html+=renderGoalCard(g,0,levels.indexOf(g.goal_type),levels)});
+    }
+    if(!annualRoots.length&&!orphans.length){
+      html='<div class="empty">NO ACTIVE GOALS YET<br>Use + to create your first goal</div>';
+    }
+    container.innerHTML=html;return;
+  }
+
   const startIdx=levels.indexOf(currentGoalType);
   // Get top-level goals for the selected type (those without parents, or all if viewing that level)
   const topGoals=allGoalsFlat.filter(g=>g.goal_type===currentGoalType&&g.status==='Active');
   const completed=allGoalsFlat.filter(g=>g.goal_type===currentGoalType&&g.status!=='Active');
 
-  let html='';
   if(!topGoals.length&&!completed.length){
     html=`<div class="empty">NO ${currentGoalType.toUpperCase()} GOALS YET<br>Use + to create one</div>`;
     container.innerHTML=html;return;
@@ -1577,7 +1684,9 @@ function renderGoalCard(g,depth,startIdx,levels){
 
   // Progress bar
   html+=`<div class="goal-progress"><div class="goal-progress-bar" style="width:${g.progress_pct}%"></div></div>`;
-  html+=`<div class="goal-meta" style="margin-top:4px"><span>${g.progress_pct}%</span></div>`;
+  html+=`<div class="goal-meta" style="margin-top:4px"><span>${g.progress_pct}%</span>`;
+  if(g.goal_type!=='weekly')html+=`<span style="margin-left:auto;cursor:pointer;color:var(--red);font-size:10px;font-weight:700" onclick='event.stopPropagation();showGoalModal(null,${gJson})'>+ SUB-GOAL</span>`;
+  html+=`</div>`;
 
   // Weekly: show active task
   if(g.goal_type==='weekly'&&g._activeTask){

@@ -153,6 +153,19 @@ Format (only show if there are active weekly goals):
 - "Hire grooming assistant" (HPM) — 25% | ⚠️ Stale 8 days → Next: Post job listing
 ```
 
+**Orphan goal warning:** After showing weekly goals, check for non-annual goals with no parent:
+```bash
+curl -sL "${SUPABASE_URL}/rest/v1/goals?parent_goal_id=is.null&goal_type=neq.annual&status=eq.Active&order=goal_type,business" "${HEADERS[@]}"
+```
+
+Format (only show if orphans exist):
+```
+⚠️ Orphaned goals (no parent in hierarchy):
+- G-007 "Get more Walmart SKUs" (weekly, Reseller)
+- G-008 "Get the gate closed" (monthly, HPM)
+Use "link orphaned goals" to connect them.
+```
+
 **Weekly Review addition:** Also show monthly goal health:
 ```bash
 curl -sL "${SUPABASE_URL}/rest/v1/goals?status=eq.Active&goal_type=eq.monthly&order=target_date" "${HEADERS[@]}"
@@ -276,6 +289,18 @@ Comprehensive review of the week — what got done, what's overdue, and what's c
    ```bash
    curl -sL "${SUPABASE_URL}/rest/v1/goals?status=eq.Active&order=target_date" "${HEADERS[@]}"
    ```
+8. Update `last_reviewed_at` for all active goals:
+   ```bash
+   NOW_ISO=$(TZ=America/Chicago date -u +%Y-%m-%dT%H:%M:%SZ)
+   curl -sL -X PATCH "${SUPABASE_URL}/rest/v1/goals?status=eq.Active" "${HEADERS[@]}" \
+     -H "Content-Type: application/json" \
+     -d "{\"last_reviewed_at\":\"${NOW_ISO}\"}"
+   ```
+9. Check for goals not reviewed in 14+ days (or never):
+   ```bash
+   FOURTEEN_DAYS_AGO=$(date -v-14d +%Y-%m-%dT00:00:00Z)
+   curl -sL "${SUPABASE_URL}/rest/v1/goals?status=eq.Active&or=(last_reviewed_at.is.null,last_reviewed_at.lt.${FOURTEEN_DAYS_AGO})&order=last_reviewed_at.nullsfirst" "${HEADERS[@]}"
+   ```
 
 **Output format:**
 ```
@@ -298,7 +323,25 @@ Comprehensive review of the week — what got done, what's overdue, and what's c
 🎯 **Goal Progress This Week:**
 - "Submit all compliance docs" (Reseller) — was 40%, now 60% (+20%)
 - "Hire grooming assistant" (HPM) — 25%, stale 8 days ⚠️
+
+🌳 **Goal Hierarchy Health:**
++- G-005 "Win Gold at Reapercon" (annual) — 0%
+|  +- G-006 "Paint gold standard mini" (quarterly) — 0%
++- G-002 "Save $60k in 401k" (annual) — 0%  [!] No breakdown
++- G-004 "Win Lorcana Championship" (annual) — 0%  [!] No breakdown
+Orphaned:
++- G-007 "Get more Walmart SKUs" (weekly) — 0%
++- G-008 "Get the gate closed" (monthly) — 0%
+
+Want me to help link orphaned goals or break down annual goals?
 ```
+
+To build the hierarchy tree:
+1. Query all active goals: `curl -sL "${SUPABASE_URL}/rest/v1/goals?status=eq.Active&order=goal_type,business" "${HEADERS[@]}"`
+2. Start with annual goals (roots). For each, recursively show children by querying `parent_goal_id=eq.G-XXX`
+3. Flag annual goals that have zero children as `[!] No breakdown`
+4. List non-annual goals with `parent_goal_id=null` under "Orphaned"
+5. After displaying, offer to help link orphans or break down bare annual goals
 
 ### 5. Process Recurring Tasks
 
