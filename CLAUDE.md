@@ -22,103 +22,72 @@ Default to **Personal** when context is unclear.
 
 Default assignee is **Brian** unless another person is mentioned.
 
-## Supabase API
+## Storage: Obsidian Vault
 
-The task database lives in Supabase hosted Postgres, accessed via the PostgREST API.
+All tasks, goals, and notes are stored as Markdown files in Brian's Obsidian vault. **Do not use Supabase for tasks, goals, or notes.**
 
-**Credentials**: Read from environment variables in `.env`:
-- `SUPABASE_URL` — Project URL (e.g., `https://xxxxx.supabase.co`)
-- `SUPABASE_ANON_KEY` — Anonymous public key
+```
+VAULT = /Users/brianthompson/Documents/Obsidian/Obsidian/Samaritan
 
-### Calling the API
-
-Always use `curl` via Bash. Load credentials first:
-
-```bash
-source "/Users/brianthompson/Documents/01 Projects/Claude Projects/Samaritan/.env" 2>/dev/null
-
-# Standard headers for all requests
-HEADERS=(-H "apikey: ${SUPABASE_ANON_KEY}" -H "Authorization: Bearer ${SUPABASE_ANON_KEY}")
-
-# GET tasks (with PostgREST filters)
-curl -sL "${SUPABASE_URL}/rest/v1/tasks?status=eq.Active&order=due_date" "${HEADERS[@]}"
-
-# GET tasks due today
-curl -sL "${SUPABASE_URL}/rest/v1/tasks?due_date=eq.2026-04-03&status=eq.Active" "${HEADERS[@]}"
-
-# GET tasks by business
-curl -sL "${SUPABASE_URL}/rest/v1/tasks?business=eq.Reseller%20Business&status=eq.Active" "${HEADERS[@]}"
-
-# INSERT a task
-curl -sL "${SUPABASE_URL}/rest/v1/tasks" "${HEADERS[@]}" \
-  -H "Content-Type: application/json" -H "Prefer: return=representation" \
-  -d '{"title":"Example task","business":"Personal","priority":"Medium"}'
-
-# UPDATE a task
-curl -sL -X PATCH "${SUPABASE_URL}/rest/v1/tasks?task_id=eq.T-001" "${HEADERS[@]}" \
-  -H "Content-Type: application/json" -H "Prefer: return=representation" \
-  -d '{"priority":"High"}'
-
-# DELETE a task
-curl -sL -X DELETE "${SUPABASE_URL}/rest/v1/tasks?task_id=eq.T-001" "${HEADERS[@]}"
+Tasks: VAULT/Tasks/T-001 Task Title.md
+Goals: VAULT/Goals/G-001 Goal Title.md
+Notes: VAULT/{Business}/N-001 Note Title.md   (e.g. VAULT/Personal/, VAULT/Happy Pup Manor/)
 ```
 
-### PostgREST Filter Syntax
+All data lives in YAML frontmatter. Agents read and write files using Python3 scripts. See individual agent files for the full helper functions and CRUD patterns.
 
-| Filter | Syntax | Example |
-|--------|--------|---------|
-| Equals | `field=eq.value` | `business=eq.Personal` |
-| Less than | `field=lt.value` | `due_date=lt.2026-04-10` |
-| Greater/equal | `field=gte.value` | `due_date=gte.2026-04-06` |
-| In list | `field=in.(a,b)` | `priority=in.(High,Medium)` |
-| Order | `order=field.asc` | `order=due_date.asc` |
+### Supabase
 
-### Task Fields (DB columns)
+**Supabase is no longer used.** All data lives in Obsidian. Do not query or write to Supabase for any Samaritan operations.
+
+### Task Fields (frontmatter)
 
 | Field | Required | Default | Notes |
 |-------|----------|---------|-------|
+| task_id | Auto | — | T-001, T-002, etc. (derived from filename sequence) |
 | title | Yes | — | Concise action description |
+| status | No | Active | Active or Completed |
 | business | No | Personal | Happy Pup Manor, Reseller Business, or Personal |
 | project | No | — | Named initiative within a business |
 | priority | No | Medium | High, Medium, or Low |
 | due_date | No | — | YYYY-MM-DD format |
 | assigned_to | No | Brian | Person responsible |
 | notes | No | — | Additional context |
-| recurrence | No | None | None, Daily, Weekdays, Weekly, Biweekly, Monthly, or custom |
+| recurrence | No | None | None, Daily, Weekdays, Weekly, Biweekly, Monthly, Quarterly, Yearly, Yearly-[Month] |
 | goal_id | No | — | Links task to a goal (G-001, G-002, etc.) |
-| task_id | Auto | — | Auto-generated T-001, T-002, etc. |
+| completed_at | No | — | YYYY-MM-DD when marked complete |
 
-### Goal Fields (DB columns)
+### Goal Fields (frontmatter)
 
 | Field | Required | Default | Notes |
 |-------|----------|---------|-------|
+| goal_id | Auto | — | G-001, G-002, etc. |
 | title | Yes | — | Concise goal name |
-| description | No | '' | What success looks like |
+| description | No | — | What success looks like |
 | business | No | Personal | Happy Pup Manor, Reseller Business, or Personal |
 | goal_type | No | weekly | annual, quarterly, monthly, or weekly |
-| parent_goal_id | No | — | Links to parent goal (e.g., weekly → monthly parent) |
+| parent_goal_id | No | — | Links to parent goal |
 | target_date | No | — | YYYY-MM-DD format |
 | status | No | Active | Active, On-Hold, Completed, Abandoned |
-| progress_pct | No | 0 | 0-100, updated as tasks complete |
+| progress_pct | No | 0 | 0-100, updated manually as tasks complete |
 | next_task_hint | No | — | AI-suggested next action |
 | review_cadence | No | Weekly | Weekly, Biweekly, or Monthly |
-| goal_id | Auto | — | Auto-generated G-001, G-002, etc. |
+| last_reviewed_at | No | — | YYYY-MM-DD of last review |
 
-### Note Fields (DB columns)
+### Note Fields (frontmatter)
 
 | Field | Required | Default | Notes |
 |-------|----------|---------|-------|
-| title | No | '' | Note title |
-| content | No | '' | Full body text |
+| note_id | Auto | — | N-001, N-002, etc. |
+| title | No | — | Note title |
 | type | No | text | text, link, idea, reference, or meeting |
 | url | No | — | URL if link type |
-| business | No | Personal | Happy Pup Manor, Reseller Business, or Personal |
-| tags | No | — | JSON array of strings |
-| pinned | No | false | Pin to top of notes view |
-| source | No | manual | Origin: manual, meeting, email, catch, jot |
-| context | No | {} | JSONB metadata (meeting details, email thread, etc.) |
-| linked_task_ids | No | {} | Array of task IDs linked to this note |
-| note_id | Auto | — | Auto-generated N-001, N-002, etc. |
+| business | No | Personal | Determines subfolder |
+| tags | No | — | YAML list |
+| pinned | No | false | Pin to top |
+| source | No | manual | manual, jot, catch, meeting, email, wind-down |
+| linked_tasks | No | — | JSON array of task IDs |
+| created | No | — | YYYY-MM-DD |
 
 ## Priority Inference
 

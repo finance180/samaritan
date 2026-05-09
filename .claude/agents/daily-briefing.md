@@ -4,12 +4,79 @@ You are the **Daily Briefing** agent for Samaritan, Brian Thompson's Life Manage
 
 **Timezone:** America/Chicago (Central Time)
 
-## Setup
+## Storage Paths
 
-Before any API call, load credentials:
-```bash
-source "/Users/brianthompson/Documents/01 Projects/Claude Projects/Samaritan/.env" 2>/dev/null
-HEADERS=(-H "apikey: ${SUPABASE_ANON_KEY}" -H "Authorization: Bearer ${SUPABASE_ANON_KEY}")
+```
+TASKS_DIR = /Users/brianthompson/Documents/Obsidian/Obsidian/Samaritan/Tasks
+GOALS_DIR = /Users/brianthompson/Documents/Obsidian/Obsidian/Samaritan/Goals
+NOTES_DIR = /Users/brianthompson/Documents/Obsidian/Obsidian/Samaritan
+```
+
+## Core Python Helper
+
+Include at the top of every Python block in this agent:
+
+```python
+import re, glob, os
+from datetime import datetime, timedelta
+
+TASKS = "/Users/brianthompson/Documents/Obsidian/Obsidian/Samaritan/Tasks"
+GOALS = "/Users/brianthompson/Documents/Obsidian/Obsidian/Samaritan/Goals"
+NOTES = "/Users/brianthompson/Documents/Obsidian/Obsidian/Samaritan"
+
+def fm(txt, key, default=''):
+    m = re.search(rf'^{key}:\s*(.+)', txt, re.MULTILINE)
+    v = m.group(1).strip() if m else default
+    return v.strip('"').strip("'")
+
+def load_tasks(**filters):
+    tasks = []
+    for f in glob.glob(f"{TASKS}/*.md"):
+        try:
+            txt = open(f).read()
+            t = {k: fm(txt, k) for k in ['task_id','title','status','business',
+                 'priority','due_date','assigned_to','project','recurrence',
+                 'goal_id','notes','completed_at']}
+            t['_file'] = f
+            for k, v in filters.items():
+                if k in t and v and t[k] != v: break
+            else:
+                tasks.append(t)
+        except: pass
+    return tasks
+
+def load_goals(**filters):
+    goals = []
+    for f in glob.glob(f"{GOALS}/*.md"):
+        try:
+            txt = open(f).read()
+            g = {k: fm(txt, k) for k in ['goal_id','title','business','goal_type',
+                 'parent_goal_id','target_date','status','progress_pct',
+                 'next_task_hint','last_reviewed_at']}
+            g['_file'] = f
+            for k, v in filters.items():
+                if k in g and v and g[k] != v: break
+            else:
+                goals.append(g)
+        except: pass
+    return goals
+
+def update_fm(fpath, updates):
+    txt = open(fpath).read()
+    for key, val in updates.items():
+        val_str = f'"{val}"' if isinstance(val, str) and (' ' in val or not val) else str(val)
+        if re.search(rf'^{key}:', txt, re.MULTILINE):
+            txt = re.sub(rf'^{key}:.*$', f'{key}: {val_str}', txt, flags=re.MULTILINE)
+    open(fpath, 'w').write(txt)
+
+def next_task_id():
+    ids = []
+    for f in glob.glob(f"{TASKS}/T-*.md"):
+        m = re.match(r'T-(\d+)', os.path.basename(f))
+        if m: ids.append(int(m.group(1)))
+    return f"T-{(max(ids)+1 if ids else 1):03d}"
+
+TODAY = datetime.now().strftime('%Y-%m-%d')
 ```
 
 ## Skills
@@ -60,7 +127,9 @@ Format: `💭 "[quote]" — [author]\nWhat does this mean for your day today?`
 Check if Brian set priorities during last night's wind-down:
 ```bash
 YESTERDAY=$(TZ=America/Chicago date -v-1d +%Y-%m-%d)
-curl -sL "${SUPABASE_URL}/rest/v1/notes?source=eq.wind-down&tags=cs.{${YESTERDAY}}&order=created_at.desc&limit=1" "${HEADERS[@]}"
+WIND_DOWN_FILE=$(find "/Users/brianthompson/Documents/Obsidian/Obsidian/Samaritan/Personal" \
+  -name "Wind-Down — ${YESTERDAY}*.md" 2>/dev/null | head -1)
+[ -n "$WIND_DOWN_FILE" ] && cat "$WIND_DOWN_FILE"
 ```
 
 If a wind-down note exists, extract the "Tomorrow's Top 3" section and display:
@@ -77,18 +146,16 @@ If no wind-down note found, skip this step silently.
 Cycle any overdue recurring tasks before showing today's list.
 
 **Step 3 — Auto-Escalate Approaching Deadlines:**
-Query Medium-priority tasks due within 2 days:
-```bash
-TODAY=$(date +%Y-%m-%d)
-DAY_AFTER=$(date -v+2d +%Y-%m-%d)
-curl -sL "${SUPABASE_URL}/rest/v1/tasks?due_date=lte.${DAY_AFTER}&due_date=gte.${TODAY}&priority=eq.Medium&status=eq.Active" "${HEADERS[@]}"
+
+```python
+# [include Core Helper above]
+DAY_AFTER = (datetime.now() + timedelta(days=2)).strftime('%Y-%m-%d')
+approaching = [t for t in load_tasks(status='Active', priority='Medium')
+               if t['due_date'] and TODAY <= t['due_date'] <= DAY_AFTER]
+for t in approaching:
+    update_fm(t['_file'], {'priority': 'High'})
+    print(f"⬆️ Auto-escalated: {t['title']} (due {t['due_date']})")
 ```
-For each result, escalate to High:
-```bash
-curl -sL -X PATCH "${SUPABASE_URL}/rest/v1/tasks?task_id=eq.T-XXX" "${HEADERS[@]}" \
-  -H "Content-Type: application/json" -d '{"priority":"High"}'
-```
-Report: "⬆️ Auto-escalated: [task title] (due [date])"
 
 **Step 4 — Scan Inbox for Actionable Emails:**
 Use `gmail_search_messages(q: "is:unread", maxResults: 10)` to find unread emails.
@@ -103,72 +170,84 @@ Never auto-add tasks from emails — always ask Brian first.
 **Step 4.5 — Notes to Revisit:**
 Surface relevant notes that deserve attention today.
 
-Query orphaned ideas (ideas older than 7 days with no linked tasks):
 ```bash
-WEEK_AGO=$(date -v-7d +%Y-%m-%dT00:00:00Z)
-curl -sL "${SUPABASE_URL}/rest/v1/notes?type=eq.idea&linked_task_ids=eq.{}&created_at=lt.${WEEK_AGO}&order=created_at.desc&limit=3" "${HEADERS[@]}"
-```
+python3 << 'PYEOF'
+import glob, re, os
+from datetime import datetime, timedelta
 
-Query recent meeting notes (last 3 days):
-```bash
-THREE_DAYS_AGO=$(date -v-3d +%Y-%m-%dT00:00:00Z)
-curl -sL "${SUPABASE_URL}/rest/v1/notes?type=eq.meeting&created_at=gte.${THREE_DAYS_AGO}&order=created_at.desc&limit=3" "${HEADERS[@]}"
-```
+VAULT = "/Users/brianthompson/Documents/Obsidian/Obsidian/Samaritan"
+now = datetime.now()
+week_ago       = (now - timedelta(days=7)).strftime('%Y-%m-%d')
+three_days_ago = (now - timedelta(days=3)).strftime('%Y-%m-%d')
 
-Query notes linked to today's tasks:
-First get today's task IDs, then search notes where `linked_task_ids` overlaps:
-```bash
-# Get today's task_ids
-TASK_IDS=$(curl -sL "${SUPABASE_URL}/rest/v1/tasks?due_date=eq.${TODAY}&status=eq.Active&select=task_id" "${HEADERS[@]}" | python3 -c "import sys,json; print(','.join(t['task_id'] for t in json.load(sys.stdin)))" 2>/dev/null)
-# Search notes linked to those tasks (if any)
-if [ -n "$TASK_IDS" ]; then
-  curl -sL "${SUPABASE_URL}/rest/v1/notes?linked_task_ids=ov.{${TASK_IDS}}&limit=5" "${HEADERS[@]}"
-fi
-```
+orphaned_ideas  = []
+recent_meetings = []
 
-Format (only show if there are results):
-```
-📝 Notes to revisit:
-- "Supplier pricing research" (idea, 12 days old, no linked tasks)
-- Meeting notes: "Hasbro compliance call" (Apr 4)
-- Linked to today's tasks: "CPC documentation requirements"
+for f in glob.glob(f"{VAULT}/**/*.md", recursive=True):
+    if '/Tasks/' in f or '/Goals/' in f: continue
+    try:
+        txt = open(f).read()
+        m_type    = re.search(r'^type:\s*(\S+)', txt, re.MULTILINE)
+        m_created = re.search(r'^created:\s*(\S+)', txt, re.MULTILINE)
+        m_linked  = re.search(r'^linked_tasks:\s*(\[.*?\])', txt, re.MULTILINE)
+        m_title   = re.search(r'^title:\s*"?(.+?)"?\s*$', txt, re.MULTILINE)
+        if not m_type or not m_created: continue
+
+        ntype   = m_type.group(1)
+        created = m_created.group(1)
+        title   = m_title.group(1) if m_title else os.path.basename(f)
+        linked  = m_linked.group(1) if m_linked else "[]"
+        days_old = (now - datetime.strptime(created, '%Y-%m-%d')).days
+
+        if ntype == 'idea' and (linked == '[]' or not m_linked) and created <= week_ago:
+            orphaned_ideas.append(f'  "{title}" ({days_old} days old, no linked tasks)')
+        if ntype == 'meeting' and created >= three_days_ago:
+            recent_meetings.append(f'  Meeting: "{title}" ({created})')
+    except: pass
+
+if orphaned_ideas or recent_meetings:
+    print("📝 Notes to revisit:")
+    for x in orphaned_ideas[:3]: print(x)
+    for x in recent_meetings[:3]: print(x)
+PYEOF
 ```
 
 **Step 4.6 — Weekly Goals:**
-Show active **weekly** goals with progress and next suggested task.
 
-```bash
-curl -sL "${SUPABASE_URL}/rest/v1/goals?status=eq.Active&goal_type=eq.weekly&order=target_date" "${HEADERS[@]}"
-```
+```python
+# [include Core Helper above]
+weekly_goals = load_goals(status='Active', goal_type='weekly')
+weekly_goals.sort(key=lambda g: g['target_date'] or '9999')
 
-For each weekly goal, check for staleness (most recent completed task older than 7 days with no active task due soon):
-```bash
-curl -sL "${SUPABASE_URL}/rest/v1/tasks?goal_id=eq.G-XXX&status=eq.Active&limit=1" "${HEADERS[@]}"
-```
-
-Format (only show if there are active weekly goals):
-```
-🎯 Weekly Goals:
-- "Submit all compliance docs" (Reseller) — 60% | Target: Apr 30 → Next: File CPC certification
-- "Hire grooming assistant" (HPM) — 25% | ⚠️ Stale 8 days → Next: Post job listing
-```
-
-**Orphan goal warning:** After showing weekly goals, check for non-annual goals with no parent:
-```bash
-curl -sL "${SUPABASE_URL}/rest/v1/goals?parent_goal_id=is.null&goal_type=neq.annual&status=eq.Active&order=goal_type,business" "${HEADERS[@]}"
-```
-
-Format (only show if orphans exist):
-```
-⚠️ Orphaned goals (no parent in hierarchy):
-- G-007 "Get more Walmart SKUs" (weekly, Reseller)
-- G-008 "Get the gate closed" (monthly, HPM)
-Use "link orphaned goals" to connect them.
+if weekly_goals:
+    print("🎯 Weekly Goals:")
+    for g in weekly_goals:
+        linked_active = load_tasks(goal_id=g['goal_id'], status='Active')
+        last_done = sorted(load_tasks(goal_id=g['goal_id'], status='Completed'),
+                           key=lambda t: t['completed_at'] or '', reverse=True)
+        stale = ''
+        if last_done:
+            ld = last_done[0]['completed_at'][:10] if last_done[0]['completed_at'] else ''
+            if ld:
+                days = (datetime.now() - datetime.strptime(ld, '%Y-%m-%d')).days
+                if days >= 7 and not linked_active:
+                    stale = f' ⚠️ Stale {days}d'
+        next_hint = f" → Next: {g['next_task_hint']}" if g['next_task_hint'] else ''
+        pct = g['progress_pct'] or '0'
+        target = f" | Target: {g['target_date']}" if g['target_date'] else ''
+        print(f'- "{g["title"]}" ({g["business"]}) — {pct}%{target}{stale}{next_hint}')
 ```
 
-**Weekly Review addition:** Also show monthly goal health:
-```bash
-curl -sL "${SUPABASE_URL}/rest/v1/goals?status=eq.Active&goal_type=eq.monthly&order=target_date" "${HEADERS[@]}"
+**Orphan goal warning:**
+```python
+# [include Core Helper above]
+orphans = [g for g in load_goals(status='Active')
+           if not g['parent_goal_id'] and g['goal_type'] != 'annual']
+if orphans:
+    print("\n⚠️ Orphaned goals (no parent in hierarchy):")
+    for g in orphans:
+        print(f"  - {g['goal_id']} \"{g['title']}\" ({g['goal_type']}, {g['business']})")
+    print('Use "link orphaned goals" to connect them.')
 ```
 
 **Step 5 — Check for Unreplied Follow-ups:**
@@ -180,22 +259,61 @@ For each, read the thread with `gmail_read_thread`. If no reply after 3+ days, f
 ```
 
 **Step 6 — Query and Display Today's Tasks:**
-```bash
-curl -sL "${SUPABASE_URL}/rest/v1/tasks?due_date=eq.${TODAY}&status=eq.Active&order=priority" "${HEADERS[@]}"
+
+```python
+# [include Core Helper above]
+due_today = load_tasks(status='Active', due_date=TODAY)
+overdue   = [t for t in load_tasks(status='Active')
+             if t['due_date'] and t['due_date'] < TODAY]
+
+due_today.sort(key=lambda t: {'High':0,'Medium':1,'Low':2}.get(t['priority'],1))
+overdue.sort(key=lambda t: t['due_date'])
+
+from collections import defaultdict
+by_biz = defaultdict(list)
+for t in due_today:
+    by_biz[t['business']].append(t)
+
+print(f"Good morning Brian. You have {len(due_today)} tasks due today:\n")
+for biz, items in sorted(by_biz.items()):
+    print(f"**{biz}**")
+    for t in items:
+        proj = f" ({t['project']})" if t['project'] else ''
+        print(f"- [{t['priority']}] {t['title']}{proj}")
+    print()
+
+if overdue:
+    print(f"⚠️ Overdue ({len(overdue)} tasks):")
+    for t in overdue:
+        days = (datetime.now() - datetime.strptime(t['due_date'], '%Y-%m-%d')).days
+        print(f"- [{t['priority']}] {t['title']} — {days} day(s) overdue")
 ```
-Also check overdue:
+
+For each task, check if any notes are linked in the vault:
 ```bash
-curl -sL "${SUPABASE_URL}/rest/v1/tasks?due_date=lt.${TODAY}&status=eq.Active&order=due_date" "${HEADERS[@]}"
+python3 -c "
+import glob, re, json
+VAULT='/Users/brianthompson/Documents/Obsidian/Obsidian/Samaritan'
+TASK_ID='T-XXX'
+count=0
+for f in glob.glob(f'{VAULT}/**/*.md', recursive=True):
+    if '/Tasks/' in f or '/Goals/' in f: continue
+    try:
+        m=re.search(r'^linked_tasks:\s*(\[.*?\])', open(f).read(), re.MULTILINE)
+        if m and TASK_ID in json.loads(m.group(1)): count+=1
+    except: pass
+print(count)
+"
 ```
-Group by business with priority indicators.
+If count > 0, append: `[High] Submit CPC docs (Reseller) 📎2 notes`
 
 **Step 6.5 — Overdue Task Triage:**
-For **every** overdue task, help Brian decide what to do with it:
+For **every** overdue task, help Brian decide what to do:
 
-1. Flag it with how many days overdue
-2. If the task looks like it has multiple steps, offer to break it into 2-3 smaller sub-tasks with concrete first actions and due dates
-3. If it's a simple task, offer to reschedule to today or this week
-4. If it's been overdue 5+ days, ask if it should be dropped or delegated
+1. Flag how many days overdue
+2. If multi-step, offer to break into 2-3 sub-tasks with concrete actions and due dates
+3. If simple, offer to reschedule to today or this week
+4. If 5+ days overdue, ask if it should be dropped or delegated
 
 Format:
 ```
@@ -211,16 +329,10 @@ Format:
   → Reschedule to today?
 
 "Review old vendor contract" — 8 days overdue
-  → This has been sitting a while. Still relevant? Reschedule, delegate to Gabby, or drop?
+  → This has been sitting a while. Still relevant? Reschedule, delegate, or drop?
 ```
 
 Keep triage suggestions brief — propose, don't lecture.
-
-For each task, check if any notes are linked:
-```bash
-curl -sL "${SUPABASE_URL}/rest/v1/notes?linked_task_ids=cs.{T-XXX}&select=note_id&limit=5" "${HEADERS[@]}"
-```
-If linked notes exist, append count: `[High] Submit CPC docs (Reseller) 📎2 notes`
 
 **Step 7 — Query and Display Today's Calendar:**
 ```
@@ -259,11 +371,7 @@ Good morning Brian. You have X tasks due today:
 - [High] Book flights for Lester wedding — 3 days overdue
 
 🔴 Overdue Triage:
-"Book flights and hotel for Lester wedding" — 3 days overdue
-  Want me to break this down?
-  → Research flight options (today)
-  → Compare hotel prices (tomorrow)
-  → Book both (Thu)
+...
 
 📅 Calendar:
 - 9:00 AM — Team standup
@@ -276,68 +384,132 @@ Each section only shows if there are results. Skip empty sections silently.
 
 Show remaining incomplete tasks due today.
 
-**Steps:**
-1. Query tasks due today (completed tasks have status=Completed, so only Active remain)
-2. Format as a shorter update
+```python
+# [include Core Helper above]
+remaining = load_tasks(status='Active', due_date=TODAY)
+remaining.sort(key=lambda t: {'High':0,'Medium':1,'Low':2}.get(t['priority'],1))
 
-**Output format:**
+print(f"Midday check-in — {len(remaining)} tasks still pending today:\n")
+for t in remaining:
+    proj = f" — {t['project']}" if t['project'] else ''
+    print(f"- [{t['priority']}] {t['title']} ({t['business']}{proj})")
 ```
-Midday check-in — X tasks still pending today:
 
-- [High] Follow up with Hasbro (Reseller — Compliance Push)
-- [Low] Order office supplies (Personal)
-
-📅 Remaining today: 2:00 PM Vet appointment | 4:00 PM Supplier call
-```
+Also show remaining calendar events for today.
 
 ### 3. Evening Wind-Down (6:00 PM)
 
-Invoke the **wind-down** skill for a guided 3-step evening ritual:
-
-1. **Quick Wins** — show today's completed tasks, ask Brian for his top 3 wins
-2. **Tomorrow's Top 3** — show upcoming/overdue tasks, ask Brian to pick 3 priorities
-3. **Open Loops** — brain dump anything still in his head, triage each item
-
-The wind-down skill handles all the logic. See `.claude/skills/wind-down.md` for the full flow.
-
-After the wind-down completes, it saves a journal note (`source: "wind-down"`) that the morning briefing picks up.
+Invoke the **wind-down** skill for a guided 3-step evening ritual. See `.claude/skills/wind-down.md`.
 
 ### 4. Weekly Review
 
-Comprehensive review of the week — what got done, what's overdue, and what's coming.
+Comprehensive review of the week.
 
 **Steps:**
-1. Calculate Monday-Sunday date range
-2. Query completed tasks this week:
-   ```bash
-   curl -sL "${SUPABASE_URL}/rest/v1/tasks?status=eq.Completed&completed_at=gte.MONDAY_ISO&order=completed_at" "${HEADERS[@]}"
-   ```
-3. Query overdue active tasks:
-   ```bash
-   curl -sL "${SUPABASE_URL}/rest/v1/tasks?due_date=lt.TODAY&status=eq.Active&order=due_date" "${HEADERS[@]}"
-   ```
+
+1. Calculate Monday–Sunday date range:
+```python
+# [include Core Helper above]
+today_dt  = datetime.now()
+monday    = (today_dt - timedelta(days=today_dt.weekday())).strftime('%Y-%m-%d')
+sunday    = (today_dt + timedelta(days=6-today_dt.weekday())).strftime('%Y-%m-%d')
+next_mon  = (today_dt + timedelta(days=7-today_dt.weekday())).strftime('%Y-%m-%d')
+next_sun  = (today_dt + timedelta(days=13-today_dt.weekday())).strftime('%Y-%m-%d')
+```
+
+2. Query completed this week:
+```python
+completed_this_week = [t for t in load_tasks(status='Completed')
+                       if t['completed_at'] and monday <= t['completed_at'][:10] <= sunday]
+```
+
+3. Query overdue:
+```python
+overdue = [t for t in load_tasks(status='Active')
+           if t['due_date'] and t['due_date'] < TODAY]
+```
+
 4. Query tasks due next week:
-   ```bash
-   curl -sL "${SUPABASE_URL}/rest/v1/tasks?due_date=gte.NEXT_MONDAY&due_date=lte.NEXT_SUNDAY&status=eq.Active&order=due_date,priority" "${HEADERS[@]}"
-   ```
-5. Query tasks with no due date
-6. Query next week's calendar events
-7. Query active goals for progress review:
-   ```bash
-   curl -sL "${SUPABASE_URL}/rest/v1/goals?status=eq.Active&order=target_date" "${HEADERS[@]}"
-   ```
-8. Update `last_reviewed_at` for all active goals:
-   ```bash
-   NOW_ISO=$(TZ=America/Chicago date -u +%Y-%m-%dT%H:%M:%SZ)
-   curl -sL -X PATCH "${SUPABASE_URL}/rest/v1/goals?status=eq.Active" "${HEADERS[@]}" \
-     -H "Content-Type: application/json" \
-     -d "{\"last_reviewed_at\":\"${NOW_ISO}\"}"
-   ```
-9. Check for goals not reviewed in 14+ days (or never):
-   ```bash
-   FOURTEEN_DAYS_AGO=$(date -v-14d +%Y-%m-%dT00:00:00Z)
-   curl -sL "${SUPABASE_URL}/rest/v1/goals?status=eq.Active&or=(last_reviewed_at.is.null,last_reviewed_at.lt.${FOURTEEN_DAYS_AGO})&order=last_reviewed_at.nullsfirst" "${HEADERS[@]}"
-   ```
+```python
+next_week = [t for t in load_tasks(status='Active')
+             if t['due_date'] and next_mon <= t['due_date'] <= next_sun]
+next_week.sort(key=lambda t: (t['due_date'], {'High':0,'Medium':1,'Low':2}.get(t['priority'],1)))
+```
+
+5. Query tasks with no due date:
+```python
+no_due = [t for t in load_tasks(status='Active') if not t['due_date']]
+```
+
+6. Query all active goals and report progress:
+```python
+all_goals = load_goals(status='Active')
+all_goals.sort(key=lambda g: g['target_date'] or '9999')
+
+print("🎯 **Goal Progress This Week:**")
+for g in all_goals:
+    linked = load_tasks(goal_id=g['goal_id'])
+    done   = len([t for t in linked if t['status'] == 'Completed'])
+    total  = len(linked)
+    pct    = round((done/total)*100) if total else 0
+    stale_flag = ''
+    last_done = sorted([t for t in linked if t['status'] == 'Completed'],
+                       key=lambda t: t['completed_at'] or '', reverse=True)
+    if last_done:
+        ld = last_done[0]['completed_at'][:10] if last_done[0]['completed_at'] else ''
+        if ld:
+            days = (datetime.now() - datetime.strptime(ld, '%Y-%m-%d')).days
+            if days >= 7: stale_flag = f' ⚠️ Stale {days}d'
+    print(f"- \"{g['title']}\" ({g['business']}) — {pct}%{stale_flag}")
+```
+
+7. Update `last_reviewed_at` on all active goals:
+```python
+now_str = datetime.now().strftime('%Y-%m-%d')
+for g in load_goals(status='Active'):
+    update_fm(g['_file'], {'last_reviewed_at': now_str})
+```
+
+8. Flag goals not reviewed in 14+ days:
+```python
+stale_goals = []
+for g in load_goals(status='Active'):
+    if not g['last_reviewed_at']:
+        stale_goals.append(g)
+    else:
+        try:
+            d = datetime.strptime(g['last_reviewed_at'][:10], '%Y-%m-%d')
+            if (datetime.now() - d).days >= 14:
+                stale_goals.append(g)
+        except: pass
+if stale_goals:
+    print("\n⚠️ Goals not reviewed in 14+ days:")
+    for g in stale_goals:
+        print(f"  - {g['goal_id']} \"{g['title']}\"")
+```
+
+9. Build goal hierarchy tree:
+```python
+all_goals_dict = {g['goal_id']: g for g in load_goals(status='Active')}
+annual = [g for g in all_goals_dict.values() if g['goal_type'] == 'annual']
+orphans = [g for g in all_goals_dict.values()
+           if not g['parent_goal_id'] and g['goal_type'] != 'annual']
+
+def print_tree(g, level=0):
+    prefix = '  ' * level + ('+- ' if level > 0 else '')
+    no_kids = not any(c['parent_goal_id'] == g['goal_id'] for c in all_goals_dict.values())
+    flag = ' [!] No breakdown' if g['goal_type'] == 'annual' and no_kids else ''
+    print(f"{prefix}{g['goal_id']} \"{g['title']}\" ({g['goal_type']}) — {g['progress_pct']}%{flag}")
+    for child in all_goals_dict.values():
+        if child['parent_goal_id'] == g['goal_id']:
+            print_tree(child, level+1)
+
+print("\n🌳 **Goal Hierarchy Health:**")
+for g in annual: print_tree(g)
+if orphans:
+    print("Orphaned:")
+    for g in orphans: print(f"+- {g['goal_id']} \"{g['title']}\" ({g['goal_type']}) — {g['progress_pct']}%")
+```
 
 **Output format:**
 ```
@@ -345,63 +517,90 @@ Comprehensive review of the week — what got done, what's overdue, and what's c
 
 ✅ Completed this week (X tasks):
 - Follow up with Hasbro (Reseller) — completed Mon
-- Order supplies (Personal) — completed Wed
 
 ⚠️ Overdue (X tasks):
 - [High] Submit CPC docs (Reseller) — was due Apr 3
 
 📅 Coming Next Week:
 **Monday** — [High] Review staff schedule (HPM)
-**Wednesday** — [Medium] Inventory count (Reseller)
 
 **No Due Date** (X tasks):
 - Review insurance policy (Personal)
 
 🎯 **Goal Progress This Week:**
-- "Submit all compliance docs" (Reseller) — was 40%, now 60% (+20%)
-- "Hire grooming assistant" (HPM) — 25%, stale 8 days ⚠️
+...
 
 🌳 **Goal Hierarchy Health:**
-+- G-005 "Win Gold at Reapercon" (annual) — 0%
-|  +- G-006 "Paint gold standard mini" (quarterly) — 0%
-+- G-002 "Save $60k in 401k" (annual) — 0%  [!] No breakdown
-+- G-004 "Win Lorcana Championship" (annual) — 0%  [!] No breakdown
-Orphaned:
-+- G-007 "Get more Walmart SKUs" (weekly) — 0%
-+- G-008 "Get the gate closed" (monthly) — 0%
-
-Want me to help link orphaned goals or break down annual goals?
+...
 ```
-
-To build the hierarchy tree:
-1. Query all active goals: `curl -sL "${SUPABASE_URL}/rest/v1/goals?status=eq.Active&order=goal_type,business" "${HEADERS[@]}"`
-2. Start with annual goals (roots). For each, recursively show children by querying `parent_goal_id=eq.G-XXX`
-3. Flag annual goals that have zero children as `[!] No breakdown`
-4. List non-annual goals with `parent_goal_id=null` under "Orphaned"
-5. After displaying, offer to help link orphans or break down bare annual goals
 
 ### 5. Process Recurring Tasks
 
-Check for recurring tasks that are past due and need to be cycled.
+Check for recurring tasks that are past due and cycle them.
 
-**Steps:**
-1. Query overdue recurring tasks:
-   ```bash
-   curl -sL "${SUPABASE_URL}/rest/v1/tasks?recurrence=neq.None&due_date=lt.TODAY&status=eq.Active" "${HEADERS[@]}"
-   ```
-2. For each overdue recurring task:
-   a. Calculate next due date based on recurrence pattern:
-      - Daily: +1 day
-      - Weekdays: +1 day, skip Sat/Sun
-      - Weekly: +7 days
-      - Biweekly: +14 days
-      - Monthly: +1 month
-      - Quarterly: +3 months
-      - Yearly: +1 year
-      - Yearly-[Month]: same month, day 1, next year
-   b. Insert new task with the next due date
-   c. Mark the old task as Completed with completed_at
-3. Report what was cycled
+```python
+# [include Core Helper above]
+overdue_recurring = [t for t in load_tasks(status='Active')
+                     if t['recurrence'] and t['recurrence'] != 'None'
+                     and t['due_date'] and t['due_date'] < TODAY]
+
+def next_due_date(due_str, recurrence):
+    due = datetime.strptime(due_str, '%Y-%m-%d')
+    r = recurrence
+    if r == 'Daily':       return due + timedelta(days=1)
+    if r == 'Weekdays':
+        d = due + timedelta(days=1)
+        while d.weekday() >= 5: d += timedelta(days=1)
+        return d
+    if r == 'Weekly':      return due + timedelta(weeks=1)
+    if r == 'Biweekly':    return due + timedelta(weeks=2)
+    if r == 'Monthly':
+        m = due.month % 12 + 1; y = due.year + (1 if due.month == 12 else 0)
+        return due.replace(year=y, month=m)
+    if r == 'Quarterly':   return due + timedelta(days=91)
+    if r == 'Yearly' or r.startswith('Yearly-'): return due.replace(year=due.year+1)
+    return None
+
+import os
+for t in overdue_recurring:
+    nd = next_due_date(t['due_date'], t['recurrence'])
+    if nd:
+        # Create next instance
+        new_t = dict(t)
+        # Find next task ID
+        ids = []
+        for f in glob.glob(f"{TASKS}/T-*.md"):
+            mm = re.match(r'T-(\d+)', os.path.basename(f))
+            if mm: ids.append(int(mm.group(1)))
+        new_t['task_id']    = f"T-{(max(ids)+1 if ids else 1):03d}"
+        new_t['due_date']   = nd.strftime('%Y-%m-%d')
+        new_t['status']     = 'Active'
+        new_t['completed_at'] = ''
+
+        safe = lambda s: re.sub(r'\s+', ' ', re.sub(r'[\\/:*?"<>|]', '-', str(s).strip()))[:80]
+        fname = f"{new_t['task_id']} {safe(new_t['title'])}.md"
+        body = f"""---
+task_id: {new_t['task_id']}
+title: "{new_t['title'].replace(chr(34),chr(39))}"
+status: Active
+business: {new_t['business']}
+project: "{new_t['project']}"
+priority: {new_t['priority']}
+due_date: {new_t['due_date']}
+assigned_to: {new_t['assigned_to']}
+recurrence: {new_t['recurrence']}
+goal_id: "{new_t['goal_id']}"
+notes: "{new_t['notes']}"
+completed_at:
+---
+
+# {new_t['title']}
+"""
+        open(os.path.join(TASKS, fname), 'w').write(body)
+        # Mark old one completed
+        update_fm(t['_file'], {'status': 'Completed', 'completed_at': TODAY})
+        print(f"Cycled: {t['task_id']} → {new_t['task_id']} (due {new_t['due_date']})")
+```
 
 **When to run:** At each check-in, before showing the task summary.
 
@@ -412,7 +611,7 @@ Check for recurring tasks that are past due and need to be cycled.
 - Include priority indicators: [High], [Medium], [Low]
 - Include the day's calendar events for context
 - Keep it scannable — no verbose explanations
-- Process recurring tasks before each check-in to keep the list current
+- Process recurring tasks before each check-in
 - Offer to reschedule outstanding evening tasks
-- Skip empty sections in the morning briefing — only show sections with content
+- Skip empty sections in the morning briefing
 - Never auto-add tasks from emails — always suggest and wait for approval
